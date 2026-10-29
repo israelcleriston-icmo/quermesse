@@ -49,8 +49,8 @@ insert into produtos(id,organizacao_id,categoria_id,nome) values
  ('30000000-0000-0000-0000-000000000001','10000000-0000-0000-0000-000000000001','20000000-0000-0000-0000-000000000001','Pastel'),
  ('30000000-0000-0000-0000-000000000002','10000000-0000-0000-0000-000000000001','20000000-0000-0000-0000-000000000001','Rifa'),
  ('30000000-0000-0000-0000-000000000003','10000000-0000-0000-0000-000000000001','20000000-0000-0000-0000-000000000001','Brinde');
-insert into chaves_pix(id,organizacao_id,chave,nome_recebedor,cidade_recebedor) values
- ('40000000-0000-0000-0000-000000000001','10000000-0000-0000-0000-000000000001','123e4567-e12b-12d1-a456-426655440000','PAROQUIA TESTE','FORTALEZA');
+insert into chaves_pix(id,organizacao_id,chave) values
+ ('40000000-0000-0000-0000-000000000001','10000000-0000-0000-0000-000000000001','123e4567-e12b-12d1-a456-426655440000');
 insert into eventos(id,organizacao_id,codigo,nome,data_inicio,data_fim,chave_pix_id,padrao) values
  ('50000000-0000-0000-0000-000000000001','10000000-0000-0000-0000-000000000001','EVT1','Festa do Padroeiro',
   (now() at time zone 'America/Sao_Paulo')::date - 1,(now() at time zone 'America/Sao_Paulo')::date + 1,
@@ -112,8 +112,9 @@ select t.check('T6b avulso com valor negativo é recusado',
 -- T7 Pix completo
 create temp table px(txid text);
 insert into px select split_part(t.run(:'c1'::uuid, format($q$select registrar_pix('%s', 5.00)$q$,:'ev')), ':', 2);
-select t.check('T7a txid com 25 chars, prefixo EVT1, só A-Z0-9 sem 0O1IL',
-  (select txid ~ '^EVT1[A-HJKMN-Z2-9]{21}$' and length(txid)=25 from px));
+select t.check('T7a txid legível: EVT1V + 6 dígitos (evento + número da venda)',
+  (select txid ~ '^EVT1V[0-9]{6}$' from px)
+  and (select numero from pix_gerados where txid=(select txid from px)) = right((select txid from px),6)::int);
 select t.check('T7b valor do QR diferente do total é recusado',
   t.run(:'c1'::uuid, format($q$select finalizar_venda('a0000000-0000-0000-0000-000000000005','%s','pix','[{"ep":"%s","q":2}]','%s','%s/%s/c.jpg')::text$q$,:'ev',:'rifa',(select txid from px),:'ev',:'c1')) like 'ERR:PIX_INVALIDO%');
 select t.check('T7c Pix sem comprovante é recusado',
@@ -179,6 +180,30 @@ select t.check('T13 relatório de quantidades (pastel = 2) e por forma',
 -- T14 produto avulso fora do cardápio e unicidade do Outros
 select t.check('T14 "Outros" não entra no cardápio',
   t.run(null,$q$insert into evento_produto(evento_id,produto_id,valor) select '50000000-0000-0000-0000-000000000001', id, 1 from produtos where tipo='avulso' returning 1$q$,'postgres') like 'ERR:PRODUTO_AVULSO%');
+
+
+-- T15 número da venda Pix = número reservado no QR; numeração por evento
+select t.check('T15a venda Pix tem o mesmo número do TXID',
+  (select bool_and(v.numero = right(v.txid,6)::int) from vendas v where v.txid is not null));
+select t.check('T15b números únicos por evento',
+  (select count(*) = count(distinct numero) from vendas where evento_id = :'ev'));
+insert into eventos(id,organizacao_id,codigo,nome,data_inicio,data_fim,chave_pix_id) values
+ ('50000000-0000-0000-0000-000000000003','10000000-0000-0000-0000-000000000001','EVT3','Outro evento',
+  (now() at time zone 'America/Sao_Paulo')::date,(now() at time zone 'America/Sao_Paulo')::date,'40000000-0000-0000-0000-000000000001');
+insert into evento_produto(id,evento_id,produto_id,valor,estoque_inicial) values
+ ('60000000-0000-0000-0000-000000000009','50000000-0000-0000-0000-000000000003','30000000-0000-0000-0000-000000000002',5.00,null);
+select t.after('T15c outro evento começa do número 1 e Pix usa o prefixo dele',
+  t.run(:'c1'::uuid, $q$select finalizar_venda('a0000000-0000-0000-0000-0000000000f1','50000000-0000-0000-0000-000000000003','dinheiro','[{"ep":"60000000-0000-0000-0000-000000000009","q":1}]')->>'numero'$q$),
+  'OK:1', $x$select true$x$);
+select t.check('T15d Pix do evento 3 = EVT3V000002',
+  t.run(:'c1'::uuid, $q$select registrar_pix('50000000-0000-0000-0000-000000000003', 5)$q$) = 'OK:EVT3V000002');
+select t.check('T15e caixa não chama _proximo_numero nem _txid_da_venda',
+  t.run(:'c1'::uuid, $q$select _proximo_numero('50000000-0000-0000-0000-000000000003')::text$q$) like 'ERR:permission denied%'
+  and t.run(:'c1'::uuid, $q$select _txid_da_venda('X',1)$q$) like 'ERR:permission denied%');
+select t.check('T15f contadores não são legíveis pela API',
+  t.run(:'c1'::uuid, 'select count(*)::text from evento_contadores') like 'ERR:permission denied%');
+select t.check('T15g resposta da venda Pix traz o txid',
+  (select count(*) from vendas where txid is not null) >= 1);
 
 select n, case when ok then 'PASS' else 'FAIL' end as resultado, nome from t.res order by n;
 select count(*) filter (where ok) as passou, count(*) filter (where not ok) as falhou from t.res;

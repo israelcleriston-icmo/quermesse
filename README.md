@@ -6,12 +6,12 @@
    (service role) que cria `auth.users` + `perfis` + `membros`. O papel vem sempre de `membros`.
 3. Login: CPF como usuário (e-mail sintético `<cpf>@cpf.quermesse.app.br`) + senha/PIN pessoal.
 4. Testes (Postgres puro, com stubs do Supabase): `supabase/tests/stubs.sql` → migration → `test_mvp1.sql`.
-   Resultado esperado: 38 PASS, 0 FAIL.
+   Ordem: stubs → migrations (todas) → test_mvp1.sql. Resultado esperado: 45 PASS, 0 FAIL.
 
 ## Contrato das RPCs (o React só chama estas para escrever)
 | RPC | Quem | O que faz |
 |---|---|---|
-| `registrar_pix(evento, valor)` → txid | caixa/secretaria | Grava o QR e devolve o TXID (prefixo = código do evento, 25 chars) |
+| `registrar_pix(evento, valor)` → txid | caixa/secretaria | Reserva o nº da venda no evento, grava o QR e devolve o TXID legível (`EVT1V000123` = evento + venda 123) |
 | `descartar_pix(txid)` | dono do QR | "Cliente não pagou": registra quem/quando |
 | `finalizar_venda(venda_id, evento, forma, itens, txid?, comprovante_path?)` | caixa/secretaria | Calcula total no servidor, baixa estoque, grava venda+itens. Idempotente pelo `venda_id` |
 | `adicionar_remessa(evento_produto, qtd)` | secretaria/conselho/admin | "+50 pastéis" com log |
@@ -40,3 +40,10 @@ expirar QRs ao encerrar o evento, relatório do caixa só após fechar o turno.
 - Primeiro admin de cada ambiente: `supabase/scripts/bootstrap_admin.sql` (Dashboard + SQL Editor).
 - Demais usuários: `node scripts/criar-usuario.mjs` (até existir a tela de admin no app).
 - Testes da função: `cd supabase/functions/criar-usuario && deno test --no-check handler_test.ts`.
+
+## TXID e mensagem do Pix
+- TXID = `<código do evento>` + `V` + `<nº da venda no evento, 6 dígitos>` (ex.: `EVT1V000123`). Numeração por evento, com saltos quando um QR é descartado.
+- O mesmo TXID vai no campo TXID (62-05) e começa a mensagem (26-02): `EVT1V000123 Festa do Padroeiro` (limite de 37 caracteres com chave aleatória).
+- O número é reservado ao gerar o QR e vira o número da venda ao finalizar. Venda em dinheiro/cartão usa o mesmo contador.
+- Nome do recebedor e cidade são fixos no código (`src/pix/brcode.ts`); o app do pagador usa o nome do DICT.
+- Módulo: `src/pix/brcode.ts` (testes: `brcode.test.ts`). Spike: `node scripts/gerar-pix-teste.mjs`.
