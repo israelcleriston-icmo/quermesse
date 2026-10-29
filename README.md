@@ -33,3 +33,10 @@ Caminho obrigatório no bucket privado: `<evento_id>/<usuario_id>/<arquivo>.jpg`
 ## Fica para o MVP 2
 `turnos` + fechamento cego, `sangrias` (via RPC com limite de tentativas), anulação/devolução,
 expirar QRs ao encerrar o evento, relatório do caixa só após fechar o turno.
+
+## Usuários (Edge Function `criar-usuario`) `criar-usuario`)
+- Só o **admin** da organização cria usuários. O papel é gravado em `membros` pela função (nunca vem do token).
+- Login = CPF + senha. E-mail sintético: `<cpf>@cpf.quermesse.app.br`.
+- Primeiro admin de cada ambiente: `supabase/scripts/bootstrap_admin.sql` (Dashboard + SQL Editor).
+- Demais usuários: `node scripts/criar-usuario.mjs` (até existir a tela de admin no app).
+- Testes da função: `cd supabase/functions/criar-usuario && deno test --no-check handler_test.ts`.
