@@ -47,3 +47,23 @@ expirar QRs ao encerrar o evento, relatório do caixa só após fechar o turno.
 - O número é reservado ao gerar o QR e vira o número da venda ao finalizar. Venda em dinheiro/cartão usa o mesmo contador.
 - Nome do recebedor e cidade são fixos no código (`src/pix/brcode.ts`); o app do pagador usa o nome do DICT.
 - Módulo: `src/pix/brcode.ts` (testes: `brcode.test.ts`). Spike: `node scripts/gerar-pix-teste.mjs`.
+
+## App (Vite + React + TypeScript + Tailwind, PWA)
+Instalar e rodar (na pasta do projeto):
+```
+npm install
+npm run dev            # ambiente dev (usa .env.development)
+npm run build          # produção (usa .env.production)
+npm run build:training # treinamento (usa .env.training)
+npm test               # testes do app (vitest)
+```
+- Crie `.env.development`, `.env.training` e `.env.production` a partir de `.env.example`
+  (URL do projeto + chave **pública**). Esses arquivos NÃO vão para o GitHub.
+- Ambientes: dev (faixa cinza), training (faixa laranja, ícone e nome próprios no celular), prod (sem faixa).
+- Login: CPF + senha (e-mail sintético `<cpf>@cpf.quermesse.app.br`). Papéis vêm da tabela `membros`.
+- Tema azul em `src/index.css` (`--color-marca-*`). Ícones provisórios em `public/icons/` (trocar pelo logo).
+
+## Dados de exemplo (só dev local)
+`supabase/seed.sql` roda em todo `npx supabase db reset` e cria 3 usuários de teste (senha `senha1234`),
+um evento aberto e um cardápio. Nunca é aplicado no training/prod (o `db push` não executa seed).
+- admin 529.982.247-25 · secretaria 390.533.447-05 · caixa 111.444.777-35
