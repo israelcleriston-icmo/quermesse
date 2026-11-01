@@ -1,22 +1,13 @@
 import { useCallback, useEffect, useMemo, useState } from "react";
 import { Link, Navigate } from "react-router-dom";
 import { brl } from "../lib/dinheiro";
-import { carregarCardapio, carregarEventoAtivo, finalizarVenda, type EventoAtivo, type ItemCardapio } from "../lib/vendas";
+import Folha from "../components/Folha";
+import Pagamento, { type Conclusao } from "../components/Pagamento";
+import { carregarCardapio, carregarEventoAtivo, type EventoAtivo, type ItemCardapio } from "../lib/vendas";
 import { totalCentavos, totalItens, useSacola } from "../store/sacola";
 import { useAuth } from "../store/auth";
 
 const LIMITE_ALERTA = 20;
-
-function useOnline() {
-  const [on, setOn] = useState(navigator.onLine);
-  useEffect(() => {
-    const a = () => setOn(true), b = () => setOn(false);
-    window.addEventListener("online", a);
-    window.addEventListener("offline", b);
-    return () => { window.removeEventListener("online", a); window.removeEventListener("offline", b); };
-  }, []);
-  return on;
-}
 
 function Cartao({ item }: { item: ItemCardapio }) {
   const { linhas, adicionar, diminuir } = useSacola();
@@ -57,74 +48,6 @@ function Cartao({ item }: { item: ItemCardapio }) {
   );
 }
 
-function Folha({ evento, aoFechar, aoConcluir }: {
-  evento: EventoAtivo; aoFechar: () => void;
-  aoConcluir: (c: { numero: number; total: number; resumo: string[] }) => void;
-}) {
-  const { linhas, vendaId, adicionar, diminuir, limpar } = useSacola();
-  const online = useOnline();
-  const [forma, setForma] = useState<"dinheiro" | "cartao" | null>(null);
-  const [enviando, setEnviando] = useState(false);
-  const [erro, setErro] = useState("");
-  const lista = Object.values(linhas);
-  const total = totalCentavos(linhas);
-
-  async function finalizar() {
-    if (enviando || !forma || !vendaId) return;      // sem duplo toque
-    setEnviando(true);
-    setErro("");
-    try {
-      const r = await finalizarVenda({
-        vendaId, eventoId: evento.id, forma, itens: lista.map((l) => ({ ep: l.id, q: l.qtd })),
-      });
-      const resumo = lista.map((l) => `${l.qtd}× ${l.nome}`);
-      limpar();
-      aoConcluir({ numero: r.numero, total, resumo });
-    } catch (e) {
-      setErro(e instanceof Error ? e.message : "Erro ao finalizar.");
-      setEnviando(false);
-    }
-  }
-
-  return (
-    <div className="fixed inset-0 z-40 flex flex-col justify-end bg-black/60">
-      <div className="mx-auto flex max-h-[90%] w-full max-w-md flex-col rounded-t-3xl bg-white p-5">
-        <h2 className="mb-3 text-xl font-extrabold text-marca-900">Sacola</h2>
-        <ul className="flex-1 divide-y divide-marca-100 overflow-y-auto">
-          {lista.map((l) => (
-            <li key={l.id} className="flex items-center gap-2 py-2">
-              <span className="flex-1 font-semibold">{l.nome}</span>
-              <button disabled={!!forma} onClick={() => diminuir(l.id)} className="h-10 w-10 rounded-full bg-marca-100 text-xl font-bold text-marca-700 disabled:opacity-40">−</button>
-              <span className="w-6 text-center font-bold">{l.qtd}</span>
-              <button disabled={!!forma} onClick={() => adicionar({ id: l.id, nome: l.nome, valorCentavos: l.valorCentavos, max: l.max })} className="h-10 w-10 rounded-full bg-marca-600 text-xl font-bold text-white disabled:opacity-40">+</button>
-              <span className="w-24 text-right font-bold">{brl(l.valorCentavos * l.qtd)}</span>
-            </li>
-          ))}
-        </ul>
-        <p className="mt-3 flex justify-between text-2xl font-extrabold text-marca-900"><span>Total</span><span>{brl(total)}</span></p>
-        {!online && <p className="mt-2 rounded-lg bg-amber-100 p-2 text-center font-semibold text-amber-800">Sem conexão: aguarde para finalizar.</p>}
-        {erro && <p role="alert" className="mt-2 rounded-lg bg-red-50 p-3 font-medium text-red-700">{erro}</p>}
-        {!forma ? (
-          <div className="mt-4 grid grid-cols-2 gap-3">
-            <button onClick={() => setForma("dinheiro")} className="rounded-xl bg-marca-600 py-4 text-lg font-bold text-white active:bg-marca-700">Dinheiro</button>
-            <button onClick={() => setForma("cartao")} className="rounded-xl bg-marca-600 py-4 text-lg font-bold text-white active:bg-marca-700">Cartão</button>
-            <button disabled className="col-span-2 rounded-xl bg-slate-200 py-4 text-lg font-bold text-slate-500">Pix (próxima etapa)</button>
-            <button onClick={aoFechar} className="col-span-2 py-2 font-semibold text-marca-700">Voltar ao cardápio</button>
-          </div>
-        ) : (
-          <div className="mt-4 grid grid-cols-2 gap-3">
-            <p className="col-span-2 text-center font-semibold text-marca-900">{forma === "dinheiro" ? "Dinheiro" : "Cartão"} · {brl(total)}</p>
-            <button onClick={() => { setForma(null); setErro(""); }} disabled={enviando} className="rounded-xl bg-red-600 py-5 text-lg font-extrabold text-white active:bg-red-700 disabled:opacity-40">Cancelar</button>
-            <button onClick={finalizar} disabled={enviando || !online} className="rounded-xl bg-green-600 py-5 text-lg font-extrabold text-white active:bg-green-700 disabled:bg-slate-300">
-              {enviando ? "Enviando…" : "Finalizar"}
-            </button>
-          </div>
-        )}
-      </div>
-    </div>
-  );
-}
-
 export default function Pdv() {
   const { usuario } = useAuth();
   const { linhas } = useSacola();
@@ -134,7 +57,8 @@ export default function Pdv() {
   const [busca, setBusca] = useState("");
   const [categoria, setCategoria] = useState("Todas");
   const [aberta, setAberta] = useState(false);
-  const [concluida, setConcluida] = useState<{ numero: number; total: number; resumo: string[] } | null>(null);
+  const [pagando, setPagando] = useState(false);
+  const [concluida, setConcluida] = useState<Conclusao | null>(null);
 
   const atualizar = useCallback(async () => {
     try {
@@ -186,15 +110,22 @@ export default function Pdv() {
       )}
 
       {aberta && evento && qtdTotal > 0 && (
-        <Folha evento={evento} aoFechar={() => setAberta(false)}
-          aoConcluir={(c) => { setAberta(false); setConcluida(c); void atualizar(); }} />
+        <Folha aoFechar={() => setAberta(false)} aoPagar={() => { setAberta(false); setPagando(true); }} />
       )}
       {aberta && qtdTotal === 0 && <FechaSozinha aoFechar={() => setAberta(false)} />}
+      {pagando && evento && qtdTotal > 0 && (
+        <Pagamento evento={evento}
+          aoVoltar={() => { setPagando(false); setAberta(true); }}
+          aoConcluir={(c) => { setPagando(false); setConcluida(c); void atualizar(); }} />
+      )}
 
       {concluida && (
         <div className="fixed inset-0 z-50 flex items-center justify-center bg-green-700 p-6 text-white">
           <div className="w-full max-w-md text-center">
             <p className="text-lg font-semibold">Venda nº {concluida.numero} registrada · {brl(concluida.total)}</p>
+            {concluida.trocoCentavos > 0 && (
+              <p className="mt-4 rounded-2xl bg-white py-4 text-4xl font-extrabold text-green-800">TROCO {brl(concluida.trocoCentavos)}</p>
+            )}
             <p className="mt-6 text-sm font-bold tracking-widest">ENTREGAR</p>
             <ul className="mt-2 space-y-1 text-3xl font-extrabold">{concluida.resumo.map((r) => <li key={r}>{r}</li>)}</ul>
             <button onClick={() => setConcluida(null)} className="mt-10 w-full rounded-2xl bg-white py-5 text-xl font-extrabold text-green-700">Próximo cliente</button>

@@ -1,4 +1,5 @@
 import { create } from "zustand";
+import { novoId } from "../lib/id";
 
 export interface LinhaSacola {
   id: string; // evento_produto.id
@@ -32,7 +33,7 @@ export const useSacola = create<Estado>((set) => ({
       const qtd = (atual?.qtd ?? 0) + 1;
       if (item.max !== null && qtd > item.max) return s; // não passa do estoque
       return {
-        vendaId: s.vendaId ?? crypto.randomUUID(),
+        vendaId: s.vendaId ?? novoId(),
         linhas: { ...s.linhas, [item.id]: { ...item, qtd } },
       };
     }),

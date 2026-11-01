@@ -15,13 +15,17 @@ export default function Inicio() {
         <h1 className="text-2xl font-extrabold">Olá, {usuario.nome.split(" ")[0]}!</h1>
       </header>
       <section className="rounded-2xl bg-white p-6 shadow">
-        {usuario.papel === "caixa" || usuario.papel === "secretaria" ? (
-          <Link to="/pdv" className="block rounded-xl bg-marca-600 py-5 text-center text-xl font-extrabold text-white active:bg-marca-700">
-            Abrir caixa
-          </Link>
-        ) : (
-          <p className="text-slate-600">Painel do {ROTULO[usuario.papel]} nas próximas etapas.</p>
-        )}
+        <div className="flex flex-col gap-3">
+          {(usuario.papel === "caixa" || usuario.papel === "secretaria") && (
+            <Link to="/pdv" className="block rounded-xl bg-marca-600 py-5 text-center text-xl font-extrabold text-white active:bg-marca-700">Abrir caixa</Link>
+          )}
+          {(usuario.papel === "secretaria" || usuario.papel === "conselho" || usuario.papel === "admin") && (
+            <Link to="/produtos" className="block rounded-xl bg-marca-100 py-5 text-center text-xl font-extrabold text-marca-700 active:bg-marca-200">Produtos</Link>
+          )}
+          {(usuario.papel === "conselho" || usuario.papel === "admin" || usuario.papel === "porteiro") && (
+            <p className="text-center text-slate-600">Demais telas do perfil {ROTULO[usuario.papel]} nas próximas etapas.</p>
+          )}
+        </div>
       </section>
       <button onClick={sair} className="rounded-xl border-2 border-marca-600 py-4 text-lg font-bold text-marca-700 active:bg-marca-100">
         Sair

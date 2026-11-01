@@ -4,7 +4,9 @@
 -- Usuários de teste (senha de todos: senha1234):
 --   admin      CPF 529.982.247-25
 --   secretaria CPF 390.533.447-05
+--   conselho   CPF 168.995.350-09
 --   caixa      CPF 111.444.777-35
+--   porteiro   CPF 746.971.314-01
 -- Login no app: CPF + senha (e-mail sintético <cpf>@cpf.quermesse.app.br).
 -- =====================================================================
 
@@ -19,7 +21,9 @@ select '00000000-0000-0000-0000-000000000000', u.id, 'authenticated', 'authentic
   from (values
     ('a0000000-0000-4000-8000-0000000000a1'::uuid, '52998224725'),
     ('a0000000-0000-4000-8000-0000000000b1'::uuid, '39053344705'),
-    ('a0000000-0000-4000-8000-0000000000c1'::uuid, '11144477735')) as u(id, cpf);
+    ('a0000000-0000-4000-8000-0000000000d1'::uuid, '16899535009'),
+    ('a0000000-0000-4000-8000-0000000000c1'::uuid, '11144477735'),
+    ('a0000000-0000-4000-8000-0000000000e1'::uuid, '74697131401')) as u(id, cpf);
 
 insert into auth.identities (id, user_id, provider_id, identity_data, provider, last_sign_in_at, created_at, updated_at)
 select gen_random_uuid(), u.id, u.id::text,
@@ -28,20 +32,26 @@ select gen_random_uuid(), u.id, u.id::text,
   from (values
     ('a0000000-0000-4000-8000-0000000000a1'::uuid, '52998224725'),
     ('a0000000-0000-4000-8000-0000000000b1'::uuid, '39053344705'),
-    ('a0000000-0000-4000-8000-0000000000c1'::uuid, '11144477735')) as u(id, cpf);
+    ('a0000000-0000-4000-8000-0000000000d1'::uuid, '16899535009'),
+    ('a0000000-0000-4000-8000-0000000000c1'::uuid, '11144477735'),
+    ('a0000000-0000-4000-8000-0000000000e1'::uuid, '74697131401')) as u(id, cpf);
 
--- 2. Organização (o produto "Outros" nasce por trigger)
+-- 2. Organização (o produto "Outros" nasce por trigger) e perfis
 insert into organizacoes (id, nome) values ('10000000-0000-4000-8000-000000000001', 'Paróquia de Exemplo');
 
 insert into perfis (id, nome, cpf) values
-  ('a0000000-0000-4000-8000-0000000000a1', 'Admin de Teste',      '52998224725'),
+  ('a0000000-0000-4000-8000-0000000000a1', 'Admin de Teste', '52998224725'),
   ('a0000000-0000-4000-8000-0000000000b1', 'Secretaria de Teste', '39053344705'),
-  ('a0000000-0000-4000-8000-0000000000c1', 'Caixa de Teste',      '11144477735');
+  ('a0000000-0000-4000-8000-0000000000d1', 'Conselho de Teste', '16899535009'),
+  ('a0000000-0000-4000-8000-0000000000c1', 'Caixa de Teste', '11144477735'),
+  ('a0000000-0000-4000-8000-0000000000e1', 'Porteiro de Teste', '74697131401');
 
 insert into membros (usuario_id, organizacao_id, papel) values
   ('a0000000-0000-4000-8000-0000000000a1', '10000000-0000-4000-8000-000000000001', 'admin'),
   ('a0000000-0000-4000-8000-0000000000b1', '10000000-0000-4000-8000-000000000001', 'secretaria'),
-  ('a0000000-0000-4000-8000-0000000000c1', '10000000-0000-4000-8000-000000000001', 'caixa');
+  ('a0000000-0000-4000-8000-0000000000d1', '10000000-0000-4000-8000-000000000001', 'conselho'),
+  ('a0000000-0000-4000-8000-0000000000c1', '10000000-0000-4000-8000-000000000001', 'caixa'),
+  ('a0000000-0000-4000-8000-0000000000e1', '10000000-0000-4000-8000-000000000001', 'porteiro');
 
 -- 3. Chave Pix fictícia, evento aberto hoje e cardápio
 insert into chaves_pix (id, organizacao_id, chave, descricao) values
@@ -59,12 +69,14 @@ insert into categorias (organizacao_id, nome, ordem) values
   ('10000000-0000-4000-8000-000000000001', 'Doces', 3),
   ('10000000-0000-4000-8000-000000000001', 'Rifas', 4);
 
-insert into produtos (organizacao_id, categoria_id, nome)
-select '10000000-0000-4000-8000-000000000001', c.id, v.nome
+-- imagem_path 'generico/<id>' aponta para as ilustrações que acompanham o app (public/img/produtos)
+insert into produtos (organizacao_id, categoria_id, nome, imagem_path)
+select '10000000-0000-4000-8000-000000000001', c.id, v.nome, v.imagem
   from (values
-    ('Pastel de carne', 'Comidas'), ('Pastel de queijo', 'Comidas'), ('Coxinha', 'Comidas'),
-    ('Refrigerante lata', 'Bebidas'), ('Suco natural', 'Bebidas'), ('Água mineral', 'Bebidas'),
-    ('Fatia de bolo', 'Doces'), ('Rifa', 'Rifas')) as v(nome, cat)
+    ('Pastel de carne', 'Comidas', 'generico/pastel'), ('Pastel de queijo', 'Comidas', 'generico/pastel'),
+    ('Coxinha', 'Comidas', 'generico/coxinha'), ('Refrigerante lata', 'Bebidas', 'generico/refrigerante'),
+    ('Suco natural', 'Bebidas', 'generico/suco'), ('Água mineral', 'Bebidas', 'generico/agua'),
+    ('Fatia de bolo', 'Doces', 'generico/bolo'), ('Rifa', 'Rifas', 'generico/rifa')) as v(nome, cat, imagem)
   join categorias c on c.nome = v.cat and c.organizacao_id = '10000000-0000-4000-8000-000000000001';
 
 -- valor, estoque inicial (NULL = ilimitado). Suco com pouco estoque e Água esgotada, para ver os avisos.

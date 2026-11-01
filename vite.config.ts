@@ -34,6 +34,6 @@ export default defineConfig(({ mode }) => {
         workbox: { navigateFallback: "index.html", globPatterns: ["**/*.{js,css,html,png,svg}"] },
       }),
     ],
-    test: { include: ["src/**/*.test.ts"] },
+    test: { include: ["src/**/*.test.{ts,tsx}"] },
   };
 });

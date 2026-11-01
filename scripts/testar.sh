@@ -4,7 +4,8 @@
 #   banco  : banco de dados (Postgres temporário no Docker; Docker Desktop precisa estar aberto)
 #   pix    : módulo do QR Pix (vitest, instalado numa pasta temporária)
 #   funcao : Edge Function criar-usuario (Deno)
-#   tudo   : os três (padrão)
+#   app    : telas e lógica do app (vitest; precisa de `npm install` feito)
+#   tudo   : todos (padrão)
 set -u
 RAIZ="$(cd "$(dirname "$0")/.." && pwd)"
 cd "$RAIZ" || exit 1
@@ -57,6 +58,15 @@ testar_pix() {
   return $r
 }
 
+testar_app() {
+  echo "=== Testes do app (telas e lógica) ==="
+  if [ ! -d node_modules ]; then
+    echo "Pasta node_modules não encontrada. Rode 'npm install' e tente de novo."
+    return 1
+  fi
+  npx vitest run
+}
+
 testar_funcao() {
   echo "=== Testes da função criar-usuario ==="
   local d="supabase/functions/criar-usuario/handler_test.ts"
@@ -71,11 +81,13 @@ case "$ALVO" in
   banco)  testar_banco  || FALHOU=1 ;;
   pix)    testar_pix    || FALHOU=1 ;;
   funcao) testar_funcao || FALHOU=1 ;;
+  app)    testar_app    || FALHOU=1 ;;
   tudo)
     testar_banco  || FALHOU=1
     testar_pix    || FALHOU=1
-    testar_funcao || FALHOU=1 ;;
-  *) echo "Uso: bash scripts/testar.sh [banco|pix|funcao|tudo]"; exit 2 ;;
+    testar_funcao || FALHOU=1
+    testar_app    || FALHOU=1 ;;
+  *) echo "Uso: bash scripts/testar.sh [banco|pix|funcao|app|tudo]"; exit 2 ;;
 esac
 
 echo

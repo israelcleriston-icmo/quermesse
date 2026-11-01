@@ -6,22 +6,25 @@
    (service role) que cria `auth.users` + `perfis` + `membros`. O papel vem sempre de `membros`.
 3. Login: CPF como usuário (e-mail sintético `<cpf>@cpf.quermesse.app.br`) + senha/PIN pessoal.
 4. Testes (Postgres puro, com stubs do Supabase): `supabase/tests/stubs.sql` → migration → `test_mvp1.sql`.
-   Ordem: stubs → migrations (todas) → test_mvp1.sql. Resultado esperado: 45 PASS, 0 FAIL.
+   Ordem: stubs → migrations (todas) → test_mvp1.sql. Resultado esperado: 58 PASS, 0 FAIL.
 
 ## Contrato das RPCs (o React só chama estas para escrever)
 | RPC | Quem | O que faz |
 |---|---|---|
-| `registrar_pix(evento, valor)` → txid | caixa/secretaria | Reserva o nº da venda no evento, grava o QR e devolve o TXID legível (`EVT1V000123` = evento + venda 123) |
-| `descartar_pix(txid)` | dono do QR | "Cliente não pagou": registra quem/quando |
-| `finalizar_venda(venda_id, evento, forma, itens, txid?, comprovante_path?)` | caixa/secretaria | Calcula total no servidor, baixa estoque, grava venda+itens. Idempotente pelo `venda_id` |
+| `registrar_pix(evento, valor, venda_id)` → txid | caixa/secretaria | Gera uma parte Pix da venda: reserva o nº da venda (1º QR) e devolve o TXID (`EVT1V000123A`, depois `...B`, até 6 partes) |
+| `descartar_pix(txid)` | dono do QR | "Cliente não pagou essa parte": registra quem/quando |
+| `finalizar_venda(venda_id, evento, itens, pagamentos)` | caixa/secretaria | Calcula o total no servidor, exige soma dos pagamentos = total, baixa estoque, grava venda, itens e pagamentos. Idempotente pelo `venda_id` |
 | `adicionar_remessa(evento_produto, qtd)` | secretaria/conselho/admin | "+50 pastéis" com log |
 | `cardapio_publico(evento?)` | anon | Cardápio do fura-fila (sem estoque exato) |
 
 `itens`: `[{"ep":"<evento_produto.id>","q":2}, {"avulso":true,"desc":"Bolo","valor":12.5,"q":1}]`
+`pagamentos` (1 a 6; `[]` só para cortesia, total 0):
+`[{"forma":"cartao","valor":15}, {"forma":"pix","valor":17,"txid":"EVT1V000123A","comprovante":"<evento>/<usuario>/x.jpg"}, {"forma":"dinheiro","valor":20,"recebido":50}]`
+Dinheiro: `valor` = parte aplicada na venda; `recebido` = o que o cliente entregou; o troco é calculado no servidor e gravado.
 
 Erros (campo `message` do Postgres): `NAO_AUTENTICADO, SEM_PERMISSAO, EVENTO_INEXISTENTE,
 EVENTO_FORA_DO_PERIODO, VALOR_INVALIDO, ITENS_INVALIDOS, ITEM_INDISPONIVEL, ESTOQUE_ESGOTADO (detail = produto),
-TOTAL_INVALIDO, PIX_INVALIDO, COMPROVANTE_OBRIGATORIO, COMPROVANTE_INVALIDO, VENDA_ID_EM_USO, PIX_NAO_DESCARTAVEL`.
+PAGAMENTO_NAO_FECHA, PAGAMENTOS_INVALIDOS, PARCELAS_DEMAIS, VENDA_JA_FINALIZADA, PIX_INVALIDO, COMPROVANTE_OBRIGATORIO, COMPROVANTE_INVALIDO, VENDA_ID_EM_USO, PIX_NAO_DESCARTAVEL`.
 
 ## Fura-fila
 QR do cliente = `{"e":"EVT1","i":[[seq,qtd],...]}` onde `seq` = `evento_produto.seq` (inteiro curto).
@@ -42,9 +45,10 @@ expirar QRs ao encerrar o evento, relatório do caixa só após fechar o turno.
 - Testes da função: `cd supabase/functions/criar-usuario && deno test --no-check handler_test.ts`.
 
 ## TXID e mensagem do Pix
-- TXID = `<código do evento>` + `V` + `<nº da venda no evento, 6 dígitos>` (ex.: `EVT1V000123`). Numeração por evento, com saltos quando um QR é descartado.
+- TXID = `<código do evento>` + `V` + `<nº da venda no evento, 6 dígitos>` + `<letra da parte>` (ex.: `EVT1V000123A`, `EVT1V000123B`). Numeração por evento, com saltos quando uma venda é abandonada.
 - O mesmo TXID vai no campo TXID (62-05) e começa a mensagem (26-02): `EVT1V000123 Festa do Padroeiro` (limite de 37 caracteres com chave aleatória).
-- O número é reservado ao gerar o QR e vira o número da venda ao finalizar. Venda em dinheiro/cartão usa o mesmo contador.
+- O número é reservado ao gerar o 1º QR da venda e vira o número da venda ao finalizar (todas as partes Pix da venda compartilham o número). Venda sem Pix pega o número ao finalizar.
+- Pagamentos parciais: até 6 partes por venda, de qualquer forma, inclusive mais de um Pix. O dinheiro esperado na gaveta é a soma do valor **aplicado** (sem o troco).
 - Nome do recebedor e cidade são fixos no código (`src/pix/brcode.ts`); o app do pagador usa o nome do DICT.
 - Módulo: `src/pix/brcode.ts` (testes: `brcode.test.ts`). Spike: `node scripts/gerar-pix-teste.mjs`.
 
@@ -64,6 +68,26 @@ npm test               # testes do app (vitest)
 - Tema azul em `src/index.css` (`--color-marca-*`). Ícones provisórios em `public/icons/` (trocar pelo logo).
 
 ## Dados de exemplo (só dev local)
-`supabase/seed.sql` roda em todo `npx supabase db reset` e cria 3 usuários de teste (senha `senha1234`),
-um evento aberto e um cardápio. Nunca é aplicado no training/prod (o `db push` não executa seed).
-- admin 529.982.247-25 · secretaria 390.533.447-05 · caixa 111.444.777-35
+`supabase/seed.sql` roda em todo `npx supabase db reset` e cria um usuário para cada perfil (senha `senha1234`),
+um evento aberto e um cardápio com imagens genéricas. Nunca é aplicado no training/prod (o `db push` não executa seed).
+
+| Perfil | CPF |
+|---|---|
+| admin | 529.982.247-25 |
+| secretaria | 390.533.447-05 |
+| conselho | 168.995.350-09 |
+| caixa | 111.444.777-35 |
+| porteiro | 746.971.314-01 |
+
+## Pagamento no PDV
+Tela única com um campo por forma: Pix, Crédito, Débito e "Dinheiro entregue". O dinheiro é o que sobrar
+(total − Pix − crédito − débito) e o troco = entregue − essa parte. Fluxo: valores → QR do Pix → foto do comprovante →
+confirmação (com o TROCO). Formas no banco: `dinheiro | pix | credito | debito` (débito só para estatística).
+
+## Imagens dos produtos
+Ilustrações genéricas em `public/img/produtos/*.svg` (gravadas como `generico/<id>`). No cadastro de produto a foto é
+sugerida pelo nome; dá para escolher outra ou enviar uma própria (bucket público `produtos`).
+
+## Testar o app em outro aparelho (celular) durante o desenvolvimento
+`npm run dev -- --host` e abra `http://IP-do-computador:5173`. Fora de HTTPS/localhost o navegador não oferece
+`crypto.randomUUID`; o app já cobre isso (`src/lib/id.ts`).

@@ -5,6 +5,7 @@ import Protegida from "./components/Protegida";
 import Inicio from "./pages/Inicio";
 import Login from "./pages/Login";
 import Pdv from "./pages/Pdv";
+import Produtos from "./pages/Produtos";
 import { useAuth } from "./store/auth";
 
 export default function App() {
@@ -17,6 +18,7 @@ export default function App() {
         <Route path="/login" element={<Login />} />
         <Route path="/" element={<Protegida><Inicio /></Protegida>} />
         <Route path="/pdv" element={<Protegida><Pdv /></Protegida>} />
+        <Route path="/produtos" element={<Protegida><Produtos /></Protegida>} />
         <Route path="*" element={<Navigate to="/" replace />} />
       </Routes>
     </HashRouter>
