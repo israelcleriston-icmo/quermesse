@@ -250,5 +250,28 @@ select t.check('T14d funções internas e tabelas de controle fechadas para o ca
 select t.check('T14e "Outros" não entra no cardápio',
   t.run(null,$q$insert into evento_produto(evento_id,produto_id,valor) select '50000000-0000-0000-0000-000000000001', id, 1 from produtos where tipo='avulso' returning 1$q$,'postgres') like 'ERR:PRODUTO_AVULSO%');
 
+-- T16 cadastro de produto direto nas tabelas, como o app faz (secretaria permitida, caixa não)
+select t.after('T16a secretaria cria produto com foto genérica',
+  t.run(:'sec'::uuid, $q$with i as (insert into produtos(organizacao_id,categoria_id,nome,imagem_path) values ('10000000-0000-0000-0000-000000000001','20000000-0000-0000-0000-000000000001','Produto novo','generico/pastel') returning id) select count(*)::text from i$q$),
+  'OK:1', $x$select exists(select 1 from produtos where nome='Produto novo' and imagem_path='generico/pastel')$x$);
+select t.after('T16b secretaria coloca o produto no cardápio do evento com valor e estoque inicial',
+  t.run(:'sec'::uuid, format($q$with i as (insert into evento_produto(evento_id,produto_id,valor,estoque_inicial) select '%s', id, 9.50, 30 from produtos where nome='Produto novo' returning id) select count(*)::text from i$q$, :'ev')),
+  'OK:1', $x$select (select estoque_atual from evento_produto ep join produtos p on p.id=ep.produto_id where p.nome='Produto novo') = 30$x$);
+select t.after('T16c secretaria edita o nome do produto',
+  t.run(:'sec'::uuid, $q$with u as (update produtos set nome='Produto editado' where nome='Produto novo' returning 1) select count(*)::text from u$q$),
+  'OK:1', $x$select exists(select 1 from produtos where nome='Produto editado')$x$);
+select t.after('T16c2 secretaria altera o valor do produto no evento',
+  t.run(:'sec'::uuid, $q$with u as (update evento_produto set valor=10 where produto_id=(select id from produtos where nome='Produto editado') returning 1) select count(*)::text from u$q$),
+  'OK:1', $x$select (select valor from evento_produto where produto_id=(select id from produtos where nome='Produto editado')) = 10.00$x$);
+select t.check('T16d caixa não cria produto',
+  t.run(:'c1'::uuid, $q$insert into produtos(organizacao_id,categoria_id,nome) values ('10000000-0000-0000-0000-000000000001','20000000-0000-0000-0000-000000000001','Do caixa')$q$) like 'ERR:new row violates row-level security%');
+select t.check('T16e caixa não coloca produto no cardápio',
+  t.run(:'c1'::uuid, format($q$insert into evento_produto(evento_id,produto_id,valor,estoque_inicial) select '%s', id, 1, 1 from produtos where nome='Produto editado'$q$, :'ev')) like 'ERR:new row violates row-level security%');
+select t.check('T16f produto novo aparece no cardápio público e na venda',
+  exists(select 1 from jsonb_array_elements(cardapio_publico()->'itens') i where i->>'nome'='Produto editado')
+  and t.fin_json(:'c1'::uuid,'a0000000-0000-0000-0000-0000000000f9',:'ev',
+        format('[{"ep":"%s","q":2}]',(select ep.id from evento_produto ep join produtos p on p.id=ep.produto_id where p.nome='Produto editado')),
+        '[{"forma":"debito","valor":20}]','valor_total') = 'OK:20.00');
+
 select n, case when ok then 'PASS' else 'FAIL' end as resultado, nome from t.res where not ok order by n;
 select count(*) filter (where ok) as passou, count(*) filter (where not ok) as falhou from t.res;

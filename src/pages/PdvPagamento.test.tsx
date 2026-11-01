@@ -22,7 +22,7 @@ vi.mock("../lib/vendas", () => ({
 }));
 vi.mock("../lib/supabase", () => ({
   configurado: true,
-  supabase: { storage: { from: () => ({ upload: m.upload }) } },
+  supabase: { auth: { signOut: async () => ({}) }, storage: { from: () => ({ upload: m.upload }) } },
 }));
 vi.mock("../lib/imagem", () => ({ comprimirImagem: async () => new Blob(["x"], { type: "image/jpeg" }) }));
 
@@ -31,17 +31,19 @@ import { useAuth } from "../store/auth";
 import { useSacola } from "../store/sacola";
 
 const texto = (re: RegExp) => screen.getByText(re).textContent ?? "";
+const botao = (nome: string | RegExp) => screen.getByRole("button", { name: nome });
+const digitar = (rotulo: string, valor: string) => fireEvent.change(screen.getByLabelText(rotulo), { target: { value: valor } });
 
-async function montarSacola12() {
+async function irParaPagamento() {
   render(<MemoryRouter><Pdv /></MemoryRouter>);
   fireEvent.click(await screen.findByText("Pastel"));
   fireEvent.click(screen.getByText("Rifa"));
   fireEvent.click(await screen.findByText(/Ver sacola · 2 itens/));
   fireEvent.click(await screen.findByText("Ir para o pagamento"));
-  await screen.findByText(/1\. Valores/);
+  await screen.findByText(/Falta\s+R\$\s*12,00/);                          // total 7,00 + 5,00
 }
 
-describe("PDV: fluxo completo de pagamento", () => {
+describe("PDV: pagamento em sequência", () => {
   beforeEach(() => {
     vi.clearAllMocks();
     URL.createObjectURL = () => "blob:previa";
@@ -50,73 +52,118 @@ describe("PDV: fluxo completo de pagamento", () => {
   });
   afterEach(cleanup);
 
-  it("dinheiro com troco: total 12,00, entregou 15,00 -> TROCO 3,00 e venda enviada certa", async () => {
+  it("dinheiro com troco: total 12,00, entregou 15,00 -> TROCO 3,00; venda enviada certa; sacola zerada", async () => {
     m.finalizarVenda.mockResolvedValue({ numero: 7, valor_total: 12, troco_total: 3, ja_existia: false });
-    await montarSacola12();
-    fireEvent.change(screen.getByLabelText("Dinheiro entregue"), { target: { value: "15" } });
+    await irParaPagamento();
+    fireEvent.click(botao("Dinheiro"));
+    expect((screen.getByLabelText("Valor desta parte") as HTMLInputElement).value).toBe("12,00");   // já vem o que falta
+    digitar("Cliente entregou", "15");
     expect(texto(/TROCO/)).toMatch(/R\$\s*3,00/);
-    fireEvent.click(screen.getByText("Continuar"));
-    fireEvent.click(await screen.findByText("Finalizar venda"));
+    fireEvent.click(botao("Confirmar"));
+    await screen.findByText("Pago ✓");
+    fireEvent.click(botao("Finalizar venda"));
     await screen.findByText(/Venda nº 7 registrada/);
-    expect(m.finalizarVenda).toHaveBeenCalledTimes(1);
-    const arg = m.finalizarVenda.mock.calls[0][0];
-    expect(arg.pagamentos).toEqual([{ forma: "dinheiro", valorCentavos: 1200, recebidoCentavos: 1500 }]);
-    expect(arg.itens).toEqual([{ ep: "p1", q: 1 }, { ep: "r1", q: 1 }]);
+    expect(m.finalizarVenda.mock.calls[0][0].pagamentos).toEqual([{ forma: "dinheiro", valorCentavos: 1200, recebidoCentavos: 1500 }]);
+    expect(m.finalizarVenda.mock.calls[0][0].itens).toEqual([{ ep: "p1", q: 1 }, { ep: "r1", q: 1 }]);
     expect(texto(/TROCO/)).toMatch(/R\$\s*3,00/);                 // tela final mostra o troco
-    expect(useSacola.getState().vendaId).toBeNull();               // sacola zerada
+    expect(useSacola.getState().vendaId).toBeNull();
+    fireEvent.click(screen.getByText("Próximo cliente"));
+    await waitFor(() => expect(screen.queryByLabelText("Menos")).toBeNull());   // nenhum cartão com quantidade sobrando
+    expect(screen.queryByText(/Ver sacola/)).toBeNull();
   });
 
-  it("pagamento misto: Pix 5 + débito 3 + dinheiro 4 (entregou 10): troco 6", async () => {
+  it("misto em sequência: Pix 5 (QR + foto) -> falta 7 -> débito 3 -> falta 4 -> dinheiro 4 entregue 10 -> troco 6", async () => {
     m.finalizarVenda.mockResolvedValue({ numero: 8, valor_total: 12, troco_total: 6, ja_existia: false });
     m.registrarPix.mockResolvedValue("EVT1V000008A");
     m.upload.mockResolvedValue({ error: null });
-    await montarSacola12();
-    fireEvent.change(screen.getByLabelText("Pix"), { target: { value: "5" } });
-    fireEvent.change(screen.getByLabelText("Débito"), { target: { value: "3" } });
-    fireEvent.change(screen.getByLabelText("Dinheiro entregue"), { target: { value: "10" } });
-    expect(texto(/TROCO/)).toMatch(/R\$\s*6,00/);
-    fireEvent.click(screen.getByText("Continuar para o Pix"));
+    await irParaPagamento();
+
+    fireEvent.click(botao("Pix"));
+    digitar("Valor desta parte", "5");
+    fireEvent.click(botao("Gerar QR Code"));
     await screen.findByAltText("QR Code do Pix");
     expect(m.registrarPix).toHaveBeenCalledWith("ev1", 500, expect.any(String));
     expect(screen.getByText("EVT1V000008A")).toBeTruthy();
-    // foto do comprovante
     const input = document.querySelector('input[type="file"]') as HTMLInputElement;
     fireEvent.change(input, { target: { files: [new File(["x"], "c.jpg", { type: "image/jpeg" })] } });
-    await screen.findByText(/3\. Confirmar/);
-    expect(m.upload).toHaveBeenCalledTimes(1);
+    await screen.findByText(/Falta\s+R\$\s*7,00/);                // o Pix abateu 5,00 e voltou a perguntar a forma do resto
     expect(m.upload.mock.calls[0][0]).toMatch(/^ev1\/u1\/.+\.jpg$/);
-    fireEvent.click(screen.getByText("Finalizar venda"));
+
+    fireEvent.click(botao("Débito"));
+    digitar("Valor desta parte", "3");
+    fireEvent.click(botao("Confirmar"));
+    await screen.findByText(/Falta\s+R\$\s*4,00/);
+
+    fireEvent.click(botao("Dinheiro"));
+    expect((screen.getByLabelText("Valor desta parte") as HTMLInputElement).value).toBe("4,00");
+    digitar("Cliente entregou", "10");
+    expect(texto(/TROCO/)).toMatch(/R\$\s*6,00/);                 // troco considera o que já foi pago
+    fireEvent.click(botao("Confirmar"));
+    await screen.findByText("Pago ✓");
+    fireEvent.click(botao("Finalizar venda"));
     await screen.findByText(/Venda nº 8 registrada/);
-    const { pagamentos } = m.finalizarVenda.mock.calls[0][0];
-    expect(pagamentos).toEqual([
-      { forma: "dinheiro", valorCentavos: 400, recebidoCentavos: 1000 },
-      { forma: "debito", valorCentavos: 300 },
+    expect(m.finalizarVenda.mock.calls[0][0].pagamentos).toEqual([
       { forma: "pix", valorCentavos: 500, txid: "EVT1V000008A", comprovante: expect.stringMatching(/^ev1\/u1\/.+\.jpg$/) },
+      { forma: "debito", valorCentavos: 300 },
+      { forma: "dinheiro", valorCentavos: 400, recebidoCentavos: 1000 },
     ]);
   });
 
-  it("Pix: 'Cliente não pagou' pede confirmação e descarta o QR", async () => {
-    m.registrarPix.mockResolvedValue("EVT1V000009A");
-    m.descartarPix.mockResolvedValue(undefined);
-    await montarSacola12();
-    fireEvent.click(screen.getAllByText("Resto")[0]);                // Pix = tudo
-    fireEvent.click(screen.getByText("Continuar para o Pix"));
-    await screen.findByAltText("QR Code do Pix");
-    fireEvent.click(screen.getByText("Cliente não pagou"));
-    fireEvent.click(await screen.findByText("Sim, não pagou"));
-    await screen.findByText(/1\. Valores/);
-    expect(m.descartarPix).toHaveBeenCalledWith("EVT1V000009A");
+  it("dinheiro parcial com nota maior: parte 4,00 entregando 10,00 e o resto no crédito", async () => {
+    await irParaPagamento();
+    fireEvent.click(botao("Dinheiro"));
+    digitar("Valor desta parte", "4");
+    digitar("Cliente entregou", "10");
+    expect(texto(/TROCO/)).toMatch(/R\$\s*6,00/);
+    fireEvent.click(botao("Confirmar"));
+    await screen.findByText(/Falta\s+R\$\s*8,00/);
+    fireEvent.click(botao("Crédito"));
+    expect((screen.getByLabelText("Valor desta parte") as HTMLInputElement).value).toBe("8,00");
+    fireEvent.click(botao("Confirmar"));
+    await screen.findByText("Pago ✓");
   });
 
-  it("botão Continuar só libera com o pagamento completo", async () => {
-    await montarSacola12();
-    const continuar = screen.getByText("Continuar") as HTMLButtonElement;
-    expect(continuar.disabled).toBe(true);
-    fireEvent.change(screen.getByLabelText("Dinheiro entregue"), { target: { value: "5" } });
-    expect(continuar.disabled).toBe(true);
-    expect(texto(/Falta/)).toMatch(/R\$\s*7,00/);
-    fireEvent.click(screen.getByText("Exato"));
-    expect(continuar.disabled).toBe(false);
+  it("Pix: 'Cliente não pagou' pede confirmação, descarta o QR e volta a escolher a forma", async () => {
+    m.registrarPix.mockResolvedValue("EVT1V000009A");
+    m.descartarPix.mockResolvedValue(undefined);
+    await irParaPagamento();
+    fireEvent.click(botao("Pix"));
+    fireEvent.click(botao("Gerar QR Code"));
+    await screen.findByAltText("QR Code do Pix");
+    fireEvent.click(botao("Cliente não pagou"));
+    fireEvent.click(await screen.findByText("Sim, não pagou"));
+    await screen.findByText(/Escolha a forma de pagamento/);
+    expect(m.descartarPix).toHaveBeenCalledWith("EVT1V000009A");
+    expect(texto(/Falta/)).toMatch(/R\$\s*12,00/);
+  });
+
+  it("valor maior que o que falta não confirma", async () => {
+    await irParaPagamento();
+    fireEvent.click(botao("Crédito"));
+    digitar("Valor desta parte", "20");
+    expect(screen.getByText("Maior que o que falta pagar.")).toBeTruthy();
+    expect((botao("Confirmar") as HTMLButtonElement).disabled).toBe(true);
+  });
+
+  it("dá para remover uma parte (menos Pix) e o 'Falta' volta", async () => {
+    await irParaPagamento();
+    fireEvent.click(botao("Crédito"));
+    fireEvent.click(botao("Confirmar"));
+    await screen.findByText("Pago ✓");
+    fireEvent.click(botao("Remover Crédito"));
+    await screen.findByText(/Falta\s+R\$\s*12,00/);
+  });
+
+  it("cancelar venda esvazia a sacola sem precisar zerar item por item", async () => {
+    render(<MemoryRouter><Pdv /></MemoryRouter>);
+    fireEvent.click(await screen.findByText("Pastel"));
+    fireEvent.click(screen.getByText("Rifa"));
+    fireEvent.click(await screen.findByText(/Ver sacola/));
+    fireEvent.click(botao("Cancelar venda"));
+    fireEvent.click(await screen.findByText("Sim, cancelar"));
+    await waitFor(() => expect(screen.queryByText(/Ver sacola/)).toBeNull());
+    expect(useSacola.getState().vendaId).toBeNull();
+    expect(Object.keys(useSacola.getState().linhas)).toHaveLength(0);
   });
 
   it("na sacola, + e − de cada item funcionam", async () => {
@@ -127,5 +174,13 @@ describe("PDV: fluxo completo de pagamento", () => {
     await waitFor(() => expect(useSacola.getState().linhas.p1.qtd).toBe(2));
     fireEvent.click(screen.getByLabelText("Menos Pastel"));
     await waitFor(() => expect(useSacola.getState().linhas.p1.qtd).toBe(1));
+  });
+
+  it("trocar de perfil não herda a sacola de quem usou antes", async () => {
+    useSacola.getState().adicionar({ id: "p1", nome: "Pastel", valorCentavos: 700, max: 50 });
+    expect(useSacola.getState().vendaId).not.toBeNull();
+    await useAuth.getState().sair();
+    expect(useSacola.getState().vendaId).toBeNull();
+    expect(Object.keys(useSacola.getState().linhas)).toHaveLength(0);
   });
 });

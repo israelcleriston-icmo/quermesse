@@ -6,7 +6,7 @@
    (service role) que cria `auth.users` + `perfis` + `membros`. O papel vem sempre de `membros`.
 3. Login: CPF como usuário (e-mail sintético `<cpf>@cpf.quermesse.app.br`) + senha/PIN pessoal.
 4. Testes (Postgres puro, com stubs do Supabase): `supabase/tests/stubs.sql` → migration → `test_mvp1.sql`.
-   Ordem: stubs → migrations (todas) → test_mvp1.sql. Resultado esperado: 58 PASS, 0 FAIL.
+   Ordem: stubs → migrations (todas) → test_mvp1.sql. Resultado esperado: 65 PASS, 0 FAIL.
 
 ## Contrato das RPCs (o React só chama estas para escrever)
 | RPC | Quem | O que faz |
@@ -79,14 +79,22 @@ um evento aberto e um cardápio com imagens genéricas. Nunca é aplicado no tra
 | caixa | 111.444.777-35 |
 | porteiro | 746.971.314-01 |
 
-## Pagamento no PDV
-Tela única com um campo por forma: Pix, Crédito, Débito e "Dinheiro entregue". O dinheiro é o que sobrar
-(total − Pix − crédito − débito) e o troco = entregue − essa parte. Fluxo: valores → QR do Pix → foto do comprovante →
-confirmação (com o TROCO). Formas no banco: `dinheiro | pix | credito | debito` (débito só para estatística).
+## Pagamento no PDV (em sequência)
+Sacola → **Ir para o pagamento**. A tela mostra "Falta R$ X" e as formas: Dinheiro, Pix, Crédito, Débito.
+Toque na forma → informe o valor desta parte (já vem o que falta) → Confirmar. A tela volta com o novo "Falta"
+para escolher a próxima forma, até "Pago ✓" → **Finalizar venda**.
+- Dinheiro: "Valor desta parte" + "Cliente entregou"; troco = entregue − parte (já considera o que foi pago antes).
+- Pix: gera o QR (TXID legível), pede a foto do comprovante e só então a parte é confirmada.
+  "Cliente não pagou" descarta o QR (fica registrado) e volta a escolher a forma.
+- Partes que não são Pix podem ser removidas (×); com Pix já pago não há como cancelar no caixa.
+- "Cancelar venda" (na sacola) limpa tudo. Sair/trocar de perfil descarta a sacola.
+Formas no banco: `dinheiro | pix | credito | debito` (débito só para estatística).
 
 ## Imagens dos produtos
 Ilustrações genéricas em `public/img/produtos/*.svg` (gravadas como `generico/<id>`). No cadastro de produto a foto é
 sugerida pelo nome; dá para escolher outra ou enviar uma própria (bucket público `produtos`).
+O cadastro de produto também define, para o evento escolhido, o **valor** e o **estoque inicial** (ou ilimitado);
+ao editar é possível alterar o valor e lançar uma **remessa** de estoque.
 
 ## Testar o app em outro aparelho (celular) durante o desenvolvimento
 `npm run dev -- --host` e abra `http://IP-do-computador:5173`. Fora de HTTPS/localhost o navegador não oferece

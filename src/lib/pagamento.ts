@@ -8,54 +8,34 @@ export interface PagamentoFinal {
   comprovante?: string; // só Pix
 }
 
-/** O que o caixa digita (centavos). Em `entregue` vai o dinheiro que o cliente colocou na mão. */
-export interface Entrada { pix: number; credito: number; debito: number; entregue: number }
-
-export interface Calculo {
-  /** Parte da venda que fica para o dinheiro = total − (Pix + crédito + débito). */
-  dinheiro: number;
-  troco: number;
-  /** Quanto ainda falta o cliente entregar em dinheiro. */
-  falta: number;
-  erro: string | null;
-  pronto: boolean;
-}
-
-/** O troco considera o que já foi pago nas outras formas: troco = entregue − (total − outras formas). */
-export function calcular(total: number, e: Entrada): Calculo {
-  const outras = e.pix + e.credito + e.debito;
-  if (outras > total) {
-    return { dinheiro: 0, troco: 0, falta: 0, erro: "Os valores passam do total da venda.", pronto: false };
-  }
-  const dinheiro = total - outras;
-  if (dinheiro === 0) {
-    if (e.entregue > 0) {
-      return { dinheiro, troco: 0, falta: 0, erro: "O total já está coberto pelas outras formas. Zere o dinheiro entregue.", pronto: false };
-    }
-    return { dinheiro, troco: 0, falta: 0, erro: null, pronto: true };
-  }
-  if (e.entregue < dinheiro) return { dinheiro, troco: 0, falta: dinheiro - e.entregue, erro: null, pronto: false };
-  return { dinheiro, troco: e.entregue - dinheiro, falta: 0, erro: null, pronto: true };
-}
-
-/** Lista de pagamentos que vai para o servidor. O Pix só entra se já tiver TXID e comprovante. */
-export function montarPagamentos(
-  total: number, e: Entrada, pix?: { txid: string; comprovante: string },
-): PagamentoFinal[] {
-  const c = calcular(total, e);
-  if (!c.pronto || c.erro) throw new Error("Pagamento incompleto.");
-  const lista: PagamentoFinal[] = [];
-  if (c.dinheiro > 0) lista.push({ forma: "dinheiro", valorCentavos: c.dinheiro, recebidoCentavos: e.entregue });
-  if (e.credito > 0) lista.push({ forma: "credito", valorCentavos: e.credito });
-  if (e.debito > 0) lista.push({ forma: "debito", valorCentavos: e.debito });
-  if (e.pix > 0) {
-    if (!pix) throw new Error("Falta o comprovante do Pix.");
-    lista.push({ forma: "pix", valorCentavos: e.pix, txid: pix.txid, comprovante: pix.comprovante });
-  }
-  return lista;
-}
-
+export const MAX_PARTES = 6;
 export const NOTAS = [500, 1000, 2000, 5000, 10000]; // atalhos de notas, em centavos
+export const ROTULO_FORMA: Record<Forma, string> = { dinheiro: "Dinheiro", pix: "Pix", credito: "Crédito", debito: "Débito" };
+
+export const somaPagamentos = (ps: PagamentoFinal[]) => ps.reduce((s, p) => s + p.valorCentavos, 0);
+/** Quanto ainda falta pagar: o que já foi confirmado nas outras formas abate daqui. */
+export const faltaCentavos = (total: number, ps: PagamentoFinal[]) => total - somaPagamentos(ps);
+export const trocoTotalCentavos = (ps: PagamentoFinal[]) =>
+  ps.reduce((s, p) => s + (p.forma === "dinheiro" ? (p.recebidoCentavos ?? p.valorCentavos) - p.valorCentavos : 0), 0);
+
+export interface Validacao { ok: boolean; erro: string | null }
+
+/** Crédito, débito e Pix: valor positivo e que não passe do que falta. */
+export function validarParte(falta: number, valor: number | null): Validacao {
+  if (valor === null) return { ok: false, erro: "Valor inválido. Use números, como 12,50." };
+  if (valor <= 0) return { ok: false, erro: null };
+  if (valor > falta) return { ok: false, erro: "Maior que o que falta pagar." };
+  return { ok: true, erro: null };
+}
+
+/** Dinheiro: parte aplicada na venda + quanto o cliente entregou. Troco = entregue − parte. */
+export function validarDinheiro(falta: number, valor: number | null, entregue: number | null): Validacao & { troco: number } {
+  const v = validarParte(falta, valor);
+  if (!v.ok) return { ...v, troco: 0 };
+  if (entregue === null) return { ok: false, erro: "Valor entregue inválido.", troco: 0 };
+  if (entregue < (valor as number)) return { ok: false, erro: entregue === 0 ? null : "O valor entregue é menor que a parte.", troco: 0 };
+  return { ok: true, erro: null, troco: entregue - (valor as number) };
+}
 
 /** "" -> 0; "12,50" | "12.5" | "12" -> centavos; qualquer outra coisa -> null (inválido). */
 export function lerReais(texto: string): number | null {

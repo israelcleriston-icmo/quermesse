@@ -2,6 +2,7 @@ import type { Session } from "@supabase/supabase-js";
 import { create } from "zustand";
 import { emailDoCpf } from "../lib/cpf";
 import { supabase } from "../lib/supabase";
+import { useSacola } from "./sacola";
 
 export type Papel = "caixa" | "secretaria" | "conselho" | "admin" | "porteiro";
 export interface Usuario {
@@ -44,7 +45,10 @@ export const useAuth = create<Estado>((set) => ({
       set({ usuario: await carregarUsuario(data.session), carregando: false });
     });
     supabase.auth.onAuthStateChange((evento) => {
-      if (evento === "SIGNED_OUT") set({ usuario: null });
+      if (evento === "SIGNED_OUT") {
+        useSacola.getState().limpar();
+        set({ usuario: null });
+      }
     });
   },
 
@@ -57,11 +61,13 @@ export const useAuth = create<Estado>((set) => ({
       await supabase.auth.signOut();
       return "Este usuário não tem acesso ativo. Fale com o administrador.";
     }
+    useSacola.getState().limpar();          // nunca herda a sacola de quem usou antes
     set({ usuario });
     return null;
   },
 
   sair: async () => {
+    useSacola.getState().limpar();
     await supabase.auth.signOut();
     set({ usuario: null });
   },
