@@ -1,0 +1,111 @@
+// @vitest-environment jsdom
+import { cleanup, fireEvent, render, screen } from "@testing-library/react";
+import { MemoryRouter } from "react-router-dom";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
+
+type Reg = { tabela: string; linha: Record<string, unknown> };
+const m = vi.hoisted(() => ({ inserts: [] as Reg[], updates: [] as Reg[], erroInsert: null as null | { message: string } }));
+
+vi.mock("../lib/supabase", () => {
+  const dados: Record<string, unknown[]> = {
+    eventos: [
+      { id: "ev1", codigo: "EVT1", nome: "Festa do Padroeiro", data_inicio: "2026-11-05", data_fim: "2026-11-08", status: "aberto", padrao: true, chave_pix_id: "k1" },
+      { id: "ev2", codigo: "EVT0", nome: "Festa antiga", data_inicio: "2025-06-01", data_fim: "2025-06-02", status: "encerrado", padrao: false, chave_pix_id: "k1" },
+    ],
+    chaves_pix: [{ id: "k1", chave: "29ac127f-8327-4a45-8879-2fedc34adb0c", descricao: "Chave principal" }],
+  };
+  const consulta = (tabela: string) => {
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    const q: any = {
+      select: () => q, eq: () => q, order: () => q, single: async () => ({ data: { id: "k-nova" }, error: null }),
+      insert: (linha: Record<string, unknown>) => { m.inserts.push({ tabela, linha }); return tabela === "eventos" && m.erroInsert ? Promise.resolve({ error: m.erroInsert }) : q; },
+      update: (linha: Record<string, unknown>) => { m.updates.push({ tabela, linha }); return q; },
+      then: (ok: (v: unknown) => void) => ok({ data: dados[tabela] ?? [], error: null }),
+    };
+    return q;
+  };
+  return { configurado: true, supabase: { from: consulta } };
+});
+
+import Eventos from "./Eventos";
+import { useAuth } from "../store/auth";
+
+const montar = () => render(<MemoryRouter><Eventos /></MemoryRouter>);
+const digitar = (rotulo: string, valor: string) => fireEvent.change(screen.getByLabelText(rotulo), { target: { value: valor } });
+const ins = (t: string) => m.inserts.find((i) => i.tabela === t)?.linha;
+
+describe("eventos e chaves Pix (Conselho/admin)", () => {
+  beforeEach(() => {
+    m.inserts.length = 0; m.updates.length = 0; m.erroInsert = null;
+    useAuth.setState({ carregando: false, usuario: { id: "u", nome: "Conselho", organizacaoId: "org1", papel: "conselho" } });
+  });
+  afterEach(cleanup);
+
+  it("lista eventos com datas em formato brasileiro, status, padrão e chave", async () => {
+    montar();
+    await screen.findByText("Festa do Padroeiro");
+    expect(screen.getByText(/EVT1 · 05\/11\/2026 a 08\/11\/2026/)).toBeTruthy();
+    expect(screen.getByText("Padrão")).toBeTruthy();
+    expect(screen.getByText("Encerrado")).toBeTruthy();
+    expect(screen.getAllByText(/Chave principal · 29ac127f…db0c/).length).toBeGreaterThan(0);
+  });
+
+  it("novo evento com chave Pix nova: cadastra a chave e depois o evento", async () => {
+    montar();
+    fireEvent.click(await screen.findByText("+ Novo evento"));
+    digitar("Nome", "Quermesse de Dezembro");
+    digitar("Código", "dez26");
+    expect((screen.getByLabelText("Código") as HTMLInputElement).value).toBe("DEZ26");      // maiúsculas
+    digitar("Início", "2026-12-05");
+    digitar("Término", "2026-12-07");
+    fireEvent.change(screen.getByLabelText("Chave Pix"), { target: { value: "nova" } });
+    digitar("Nova chave", "123e4567-e12b-12d1-a456-426655440000");
+    digitar("Descrição da chave", "Chave de dezembro");
+    fireEvent.click(screen.getByText("Salvar"));
+    await screen.findByText("Evento criado ✓");
+    expect(ins("chaves_pix")).toEqual({ organizacao_id: "org1", chave: "123e4567-e12b-12d1-a456-426655440000", descricao: "Chave de dezembro" });
+    expect(ins("eventos")).toEqual({
+      nome: "Quermesse de Dezembro", data_inicio: "2026-12-05", data_fim: "2026-12-07", chave_pix_id: "k-nova",
+      padrao: false, organizacao_id: "org1", codigo: "DEZ26", status: "aberto",
+    });
+  });
+
+  it("valida o término antes do início e o código; mensagem amigável para código repetido", async () => {
+    montar();
+    fireEvent.click(await screen.findByText("+ Novo evento"));
+    digitar("Nome", "Teste");
+    digitar("Início", "2026-12-07");
+    digitar("Término", "2026-12-05");
+    fireEvent.click(screen.getByText("Salvar"));
+    expect((await screen.findByRole("alert")).textContent).toMatch(/código/);
+    digitar("Código", "EVT1");
+    fireEvent.click(screen.getByText("Salvar"));
+    expect((await screen.findByRole("alert")).textContent).toMatch(/anterior ao início/);
+    digitar("Término", "2026-12-09");
+    m.erroInsert = { message: 'duplicate key value violates unique constraint "eventos_codigo_key"' };
+    fireEvent.click(screen.getByText("Salvar"));
+    await screen.findByText("Já existe um evento com esse código.");
+  });
+
+  it("encerrar pede confirmação e atualiza o status; reabrir não precisa", async () => {
+    montar();
+    fireEvent.click(await screen.findByText("Encerrar"));
+    expect(screen.getByText(/QR Pix pendentes são cancelados/)).toBeTruthy();
+    fireEvent.click(screen.getByText("Sim, encerrar"));
+    await screen.findByText("Evento encerrado ✓");
+    expect(m.updates).toEqual([{ tabela: "eventos", linha: { status: "encerrado" } }]);
+    fireEvent.click(screen.getByText("Reabrir"));
+    await screen.findByText("Evento reaberto ✓");
+    expect(m.updates[1]).toEqual({ tabela: "eventos", linha: { status: "aberto" } });
+  });
+
+  it("editar não deixa mudar o código", async () => {
+    montar();
+    fireEvent.click((await screen.findAllByText("Editar"))[0]);
+    expect((screen.getByLabelText("Código") as HTMLInputElement).disabled).toBe(true);
+    digitar("Nome", "Festa do Padroeiro 2026");
+    fireEvent.click(screen.getByText("Salvar"));
+    await screen.findByText("Evento atualizado ✓");
+    expect(m.updates[0].linha).toMatchObject({ nome: "Festa do Padroeiro 2026", chave_pix_id: "k1" });
+  });
+});
