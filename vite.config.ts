@@ -10,7 +10,7 @@ export default defineConfig(({ mode }) => {
   const nome = treino ? "Quermesse (Treinamento)" : dev ? "Quermesse (Dev)" : "Quermesse";
   const sufixo = treino ? "-training" : "";
   return {
-    base: "/",
+    base: dev ? "/" : "/quermesse/",
     plugins: [
       react(),
       tailwindcss(),
