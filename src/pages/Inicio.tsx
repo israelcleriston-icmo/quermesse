@@ -28,6 +28,12 @@ export default function Inicio() {
           {(usuario.papel === "secretaria" || usuario.papel === "conselho" || usuario.papel === "admin") && (
             <Link to="/produtos" className="block rounded-xl bg-marca-100 py-5 text-center text-xl font-extrabold text-marca-700 active:bg-marca-200">Produtos</Link>
           )}
+          {(usuario.papel === "conselho" || usuario.papel === "admin") && (
+            <Link to="/eventos" className="block rounded-xl bg-marca-100 py-5 text-center text-xl font-extrabold text-marca-700 active:bg-marca-200">Eventos e chaves Pix</Link>
+          )}
+          {usuario.papel === "admin" && (
+            <Link to="/usuarios" className="block rounded-xl bg-marca-100 py-5 text-center text-xl font-extrabold text-marca-700 active:bg-marca-200">Usuários</Link>
+          )}
           {(usuario.papel === "conselho" || usuario.papel === "admin" || usuario.papel === "porteiro") && (
             <p className="text-center text-slate-600">Demais telas do perfil {ROTULO[usuario.papel]} nas próximas etapas.</p>
           )}

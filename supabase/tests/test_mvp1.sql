@@ -273,5 +273,35 @@ select t.check('T16f produto novo aparece no cardápio público e na venda',
         format('[{"ep":"%s","q":2}]',(select ep.id from evento_produto ep join produtos p on p.id=ep.produto_id where p.nome='Produto editado')),
         '[{"forma":"debito","valor":20}]','valor_total') = 'OK:20.00');
 
+-- T17 gestão de usuários e encerramento de evento
+\set adm '00000000-0000-0000-0000-0000000000d1'
+select t.after('T17a admin troca o perfil do caixa 2 para secretaria',
+  t.run(:'adm'::uuid, $q$select alterar_membro('00000000-0000-0000-0000-0000000000a2','10000000-0000-0000-0000-000000000001','secretaria',true)::text$q$),
+  'OK:%', $x$select (select papel from membros where usuario_id='00000000-0000-0000-0000-0000000000a2')='secretaria' and exists(select 1 from logs_auditoria where acao='MEMBRO_ALTERADO')$x$);
+select t.check('T17b só admin altera membros',
+  t.run(:'sec'::uuid, $q$select alterar_membro('00000000-0000-0000-0000-0000000000a1','10000000-0000-0000-0000-000000000001','admin',true)::text$q$) like 'ERR:SEM_PERMISSAO%'
+  and t.run(:'con'::uuid, $q$select alterar_membro('00000000-0000-0000-0000-0000000000a1','10000000-0000-0000-0000-000000000001','admin',true)::text$q$) like 'ERR:SEM_PERMISSAO%');
+select t.check('T17c admin não rebaixa nem desativa a si mesmo',
+  t.run(:'adm'::uuid, $q$select alterar_membro('00000000-0000-0000-0000-0000000000d1','10000000-0000-0000-0000-000000000001','caixa',true)::text$q$) like 'ERR:NAO_PODE_ALTERAR_A_SI_MESMO%'
+  and t.run(:'adm'::uuid, $q$select alterar_membro('00000000-0000-0000-0000-0000000000d1','10000000-0000-0000-0000-000000000001','admin',false)::text$q$) like 'ERR:NAO_PODE_ALTERAR_A_SI_MESMO%');
+select t.check('T17d perfil inválido e usuário inexistente são recusados',
+  t.run(:'adm'::uuid, $q$select alterar_membro('00000000-0000-0000-0000-0000000000a1','10000000-0000-0000-0000-000000000001','presidente',true)::text$q$) like 'ERR:DADOS_INVALIDOS%'
+  and t.run(:'adm'::uuid, $q$select alterar_membro(gen_random_uuid(),'10000000-0000-0000-0000-000000000001','caixa',true)::text$q$) like 'ERR:USUARIO_INEXISTENTE%');
+select t.after('T17e usuário desativado perde o acesso na hora (RLS)',
+  t.run(:'adm'::uuid, $q$select alterar_membro('00000000-0000-0000-0000-0000000000a1','10000000-0000-0000-0000-000000000001','caixa',false)::text$q$),
+  'OK:%', $x$select true$x$);
+select t.check('T17f caixa desativado não vê eventos nem consegue vender',
+  t.run(:'c1'::uuid, 'select count(*)::text from eventos') = 'OK:0'
+  and t.fin(:'c1'::uuid,'a0000000-0000-0000-0000-0000000000f7',:'ev',:'r1','[{"forma":"debito","valor":5}]') like 'ERR:SEM_PERMISSAO%');
+select t.after('T17g encerrar o evento cancela os QR Pix pendentes',
+  t.run(:'con'::uuid, $q$with u as (update eventos set status='encerrado' where id='50000000-0000-0000-0000-000000000003' returning 1) select count(*)::text from u$q$),
+  'OK:1', $x$select (select situacao from pix_gerados where txid='EVT3V000002A')='cancelado_por_encerramento' and exists(select 1 from logs_auditoria where acao='EVENTO_ENCERRADO')$x$);
+select t.check('T17h evento encerrado não aceita QR nem venda',
+  t.run(:'sec'::uuid, $q$select registrar_pix('50000000-0000-0000-0000-000000000003', 5, gen_random_uuid())$q$) like 'ERR:EVENTO_FORA_DO_PERIODO%');
+select t.check('T17i conselho cria evento e chave Pix (permitido); caixa/secretaria não',
+  t.run(:'con'::uuid, $q$with i as (insert into chaves_pix(organizacao_id,chave,descricao) values ('10000000-0000-0000-0000-000000000001','outra-chave','Reserva') returning id) select count(*)::text from i$q$) = 'OK:1'
+  and t.run(:'sec'::uuid, $q$insert into chaves_pix(organizacao_id,chave) values ('10000000-0000-0000-0000-000000000001','x')$q$) like 'ERR:new row violates row-level security%'
+  and t.run(:'sec'::uuid, $q$insert into eventos(organizacao_id,codigo,nome,data_inicio,data_fim,chave_pix_id) values ('10000000-0000-0000-0000-000000000001','Z1','x',current_date,current_date,'40000000-0000-0000-0000-000000000001')$q$) like 'ERR:new row violates row-level security%');
+
 select n, case when ok then 'PASS' else 'FAIL' end as resultado, nome from t.res where not ok order by n;
 select count(*) filter (where ok) as passou, count(*) filter (where not ok) as falhou from t.res;

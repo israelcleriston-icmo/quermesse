@@ -6,7 +6,7 @@
    (service role) que cria `auth.users` + `perfis` + `membros`. O papel vem sempre de `membros`.
 3. Login: CPF como usuário (e-mail sintético `<cpf>@cpf.quermesse.app.br`) + senha/PIN pessoal.
 4. Testes (Postgres puro, com stubs do Supabase): `supabase/tests/stubs.sql` → migration → `test_mvp1.sql`.
-   Ordem: stubs → migrations (todas) → test_mvp1.sql. Resultado esperado: 65 PASS, 0 FAIL.
+   Ordem: stubs → migrations (todas) → test_mvp1.sql. Resultado esperado: 74 PASS, 0 FAIL.
 
 ## Contrato das RPCs (o React só chama estas para escrever)
 | RPC | Quem | O que faz |
@@ -99,3 +99,12 @@ ao editar é possível alterar o valor e lançar uma **remessa** de estoque.
 ## Testar o app em outro aparelho (celular) durante o desenvolvimento
 `npm run dev -- --host` e abra `http://IP-do-computador:5173`. Fora de HTTPS/localhost o navegador não oferece
 `crypto.randomUUID`; o app já cobre isso (`src/lib/id.ts`).
+
+## Gestão (admin e Conselho)
+- **Usuários** (só admin): lista com CPF mascarado; criar (usa a Edge Function `criar-usuario`); trocar perfil e desativar
+  (RPC `alterar_membro`). O admin não pode rebaixar nem desativar a si mesmo. Desativado perde o acesso na hora.
+- **Eventos e chaves Pix** (Conselho e admin): criar/editar evento (código em maiúsculas, datas, chave Pix existente ou nova,
+  evento padrão), **encerrar** (cancela os QR Pix pendentes e bloqueia vendas) e reabrir. O código não muda depois de criado.
+- Para criar usuários no **dev local** a função precisa estar rodando: `npx supabase functions serve criar-usuario --no-verify-jwt`
+  (Docker aberto). Nos projetos da nuvem, `npx supabase functions deploy criar-usuario`.
+- A tabela `health_check` (keep-alive do Google Apps Script) está na migration `20261101000000_health_check.sql` (idempotente).
