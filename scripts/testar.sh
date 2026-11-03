@@ -3,7 +3,7 @@
 # Uso (na pasta do projeto):  bash scripts/testar.sh [banco|pix|funcao|tudo]
 #   banco  : banco de dados (Postgres temporário no Docker; Docker Desktop precisa estar aberto)
 #   pix    : módulo do QR Pix (vitest, instalado numa pasta temporária)
-#   funcao : Edge Function criar-usuario (Deno)
+#   funcao : Edge Functions criar-usuario e redefinir-senha (Deno)
 #   app    : telas e lógica do app (vitest; precisa de `npm install` feito)
 #   tudo   : todos (padrão)
 set -u
@@ -68,13 +68,17 @@ testar_app() {
 }
 
 testar_funcao() {
-  echo "=== Testes da função criar-usuario ==="
-  local d="supabase/functions/criar-usuario/handler_test.ts"
-  if command -v deno >/dev/null 2>&1; then
-    deno test --no-check "$d"
-  else
-    npx --yes deno test --no-check "$d"
-  fi
+  local f ok=0
+  for f in criar-usuario redefinir-senha; do
+    echo "=== Testes da função $f ==="
+    local d="supabase/functions/$f/handler_test.ts"
+    if command -v deno >/dev/null 2>&1; then
+      deno test --no-check "$d" || ok=1
+    else
+      npx --yes deno test --no-check "$d" || ok=1
+    fi
+  done
+  return $ok
 }
 
 case "$ALVO" in

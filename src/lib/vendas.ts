@@ -20,17 +20,24 @@ const hojeISO = () => {
   return `${d.getFullYear()}-${dois(d.getMonth() + 1)}-${dois(d.getDate())}`;
 };
 
-export async function carregarEventoAtivo(): Promise<EventoAtivo | null> {
+/** Todos os eventos abertos hoje (o caixa escolhe qual está atendendo). O "padrão" vem primeiro. */
+export async function carregarEventosAtivos(): Promise<EventoAtivo[]> {
   const hoje = hojeISO();
   const { data, error } = await supabase
     .from("eventos").select("id, codigo, nome, chave_pix_id")
     .eq("status", "aberto").lte("data_inicio", hoje).gte("data_fim", hoje)
-    .order("padrao", { ascending: false }).order("data_inicio").limit(1).maybeSingle();
+    .order("padrao", { ascending: false }).order("data_inicio");
   if (error) throw new Error(error.message);
-  if (!data) return null;
-  const chave = await supabase.from("chaves_pix").select("chave").eq("id", data.chave_pix_id).maybeSingle();
-  if (chave.error || !chave.data) throw new Error("Chave Pix do evento não encontrada.");
-  return { id: data.id, codigo: data.codigo, nome: data.nome, chavePix: chave.data.chave };
+  if (!data || data.length === 0) return [];
+  const ids = [...new Set(data.map((e) => e.chave_pix_id))];
+  const chaves = await supabase.from("chaves_pix").select("id, chave").in("id", ids);
+  if (chaves.error) throw new Error("Chave Pix do evento não encontrada.");
+  const porId = new Map((chaves.data ?? []).map((c) => [c.id as string, c.chave as string]));
+  return data.map((e) => {
+    const chave = porId.get(e.chave_pix_id);
+    if (!chave) throw new Error("Chave Pix do evento não encontrada.");
+    return { id: e.id, codigo: e.codigo, nome: e.nome, chavePix: chave };
+  });
 }
 
 interface Linha {

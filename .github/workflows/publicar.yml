@@ -1,0 +1,65 @@
+# Publica o app no GitHub Pages.
+#   branch main      -> www.quermesse.app.br            (neste repositório, via GitHub Pages)
+#   branch training  -> treinamento.quermesse.app.br    (no repositório quermesse-treinamento)
+# Passo a passo e segredos necessários: docs/PUBLICACAO.md
+name: Publicar
+
+on:
+  push:
+    branches: [main, training]
+  workflow_dispatch:
+
+concurrency:
+  group: publicar-${{ github.ref_name }}
+  cancel-in-progress: true
+
+jobs:
+  producao:
+    if: github.ref_name == 'main'
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      pages: write
+      id-token: write
+    environment:
+      name: github-pages
+      url: ${{ steps.deploy.outputs.page_url }}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with: { node-version: 22, cache: npm }
+      - run: npm ci
+      - run: npx vitest run
+      - run: npm run build
+        env:
+          VITE_BASE: /
+      - name: Domínio próprio
+        run: echo "www.quermesse.app.br" > dist/CNAME
+      - uses: actions/upload-pages-artifact@v3
+        with: { path: dist }
+      - id: deploy
+        uses: actions/deploy-pages@v4
+
+  treinamento:
+    if: github.ref_name == 'training'
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with: { node-version: 22, cache: npm }
+      - run: npm ci
+      - run: npx vitest run
+      - run: npm run build:training
+        env:
+          VITE_BASE: /
+      - name: Publicar no repositório de treinamento
+        uses: peaceiris/actions-gh-pages@v4
+        with:
+          personal_token: ${{ secrets.TREINAMENTO_TOKEN }}
+          external_repository: israelcleriston-icmo/quermesse-treinamento
+          publish_branch: gh-pages
+          publish_dir: dist
+          cname: treinamento.quermesse.app.br
+          force_orphan: true

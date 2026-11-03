@@ -417,3 +417,6 @@ enabled = true
 
 [functions.criar-usuario]
 verify_jwt = false
+
+[functions.redefinir-senha]
+verify_jwt = false

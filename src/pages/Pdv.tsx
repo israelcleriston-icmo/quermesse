@@ -3,9 +3,14 @@ import { Link, Navigate } from "react-router-dom";
 import { brl } from "../lib/dinheiro";
 import Folha from "../components/Folha";
 import Pagamento, { type Conclusao } from "../components/Pagamento";
-import { carregarCardapio, carregarEventoAtivo, type EventoAtivo, type ItemCardapio } from "../lib/vendas";
+import { carregarCardapio, carregarEventosAtivos, type EventoAtivo, type ItemCardapio } from "../lib/vendas";
 import { totalCentavos, totalItens, useSacola } from "../store/sacola";
+import { AMBIENTE } from "../lib/ambiente";
 import { useAuth } from "../store/auth";
+
+const CHAVE_EVENTO = `quermesse-${AMBIENTE}-evento`;
+const lerEscolha = () => { try { return sessionStorage.getItem(CHAVE_EVENTO); } catch { return null; } };
+const gravarEscolha = (id: string) => { try { sessionStorage.setItem(CHAVE_EVENTO, id); } catch { /* sem armazenamento */ } };
 
 const LIMITE_ALERTA = 20;
 
@@ -51,7 +56,8 @@ function Cartao({ item }: { item: ItemCardapio }) {
 export default function Pdv() {
   const { usuario } = useAuth();
   const { linhas } = useSacola();
-  const [evento, setEvento] = useState<EventoAtivo | null | undefined>(undefined);
+  const [eventos, setEventos] = useState<EventoAtivo[] | undefined>(undefined);
+  const [eventoId, setEventoId] = useState<string | null>(lerEscolha());
   const [itens, setItens] = useState<ItemCardapio[]>([]);
   const [erro, setErro] = useState("");
   const [busca, setBusca] = useState("");
@@ -60,17 +66,34 @@ export default function Pdv() {
   const [pagando, setPagando] = useState(false);
   const [concluida, setConcluida] = useState<Conclusao | null>(null);
 
+  // Evento em uso: o escolhido (se ainda estiver aberto) ou o primeiro da lista (o padrão).
+  const evento: EventoAtivo | null | undefined =
+    eventos === undefined ? undefined : (eventos.find((e) => e.id === eventoId) ?? eventos[0] ?? null);
+  const idAtual = evento?.id ?? null;
+
   const atualizar = useCallback(async () => {
     try {
-      const ev = await carregarEventoAtivo();
-      setEvento(ev);
-      setItens(ev ? await carregarCardapio(ev.id) : []);
+      const lista = await carregarEventosAtivos();
+      setEventos(lista);
+      const em = lista.find((e) => e.id === idAtual) ?? lista[0];
+      setItens(em ? await carregarCardapio(em.id) : []);
       setErro("");
     } catch {
       setErro("Não foi possível carregar o cardápio. Verifique a conexão.");
     }
-  }, []);
+  }, [idAtual]);
   useEffect(() => { void atualizar(); }, [atualizar]);
+
+  function trocarEvento(novoId: string) {
+    if (novoId === idAtual) return;
+    if (totalItens(linhas) > 0 && !window.confirm("Trocar de evento descarta a sacola atual. Trocar mesmo?")) return;
+    useSacola.getState().limpar();
+    setItens([]);
+    setBusca("");
+    setCategoria("Todas");
+    gravarEscolha(novoId);
+    setEventoId(novoId);
+  }
 
   const categorias = useMemo(() => ["Todas", ...Array.from(new Set(itens.map((i) => i.categoria)))], [itens]);
   const visiveis = useMemo(() => {
@@ -86,7 +109,14 @@ export default function Pdv() {
       <header className="sticky top-6 z-30 bg-marca-600 p-3 text-white shadow">
         <div className="mb-2 flex items-center justify-between">
           <Link to="/" className="font-semibold">← Início</Link>
-          <span className="truncate text-sm font-bold">{evento?.nome ?? "Caixa"}</span>
+          {eventos && eventos.length > 1 ? (
+            <select aria-label="Evento" value={idAtual ?? ""} onChange={(e) => trocarEvento(e.target.value)}
+              className="max-w-[60%] truncate rounded-lg bg-white px-2 py-1 text-sm font-bold text-marca-900">
+              {eventos.map((e) => <option key={e.id} value={e.id}>{e.nome}</option>)}
+            </select>
+          ) : (
+            <span className="truncate text-sm font-bold">{evento?.nome ?? "Caixa"}</span>
+          )}
         </div>
         <input value={busca} onChange={(e) => setBusca(e.target.value)} placeholder="Buscar produto" className="w-full rounded-xl bg-white px-4 py-3 text-marca-900 outline-none" />
         <div className="mt-2 flex gap-2 overflow-x-auto pb-1">
@@ -100,6 +130,11 @@ export default function Pdv() {
         {erro && <p role="alert" className="rounded-lg bg-red-50 p-3 font-medium text-red-700">{erro}</p>}
         {evento === undefined && !erro && <p className="p-6 text-center text-marca-700">Carregando…</p>}
         {evento === null && <p className="rounded-xl bg-white p-6 text-center font-semibold">Nenhum evento aberto hoje. Peça ao Conselho para abrir o evento.</p>}
+        {evento && !erro && itens.length === 0 && (
+          <p role="status" className="rounded-xl bg-amber-100 p-4 text-center font-semibold text-amber-900">
+            O evento “{evento.nome}” ainda não tem produtos no cardápio. Peça à Secretaria ou ao Conselho para montar o cardápio (Produtos) ou copiá-lo de outro evento (Eventos).
+          </p>
+        )}
         <ul className="flex flex-col gap-3">{visiveis.map((i) => <Cartao key={i.id} item={i} />)}</ul>
       </main>
 

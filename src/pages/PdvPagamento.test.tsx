@@ -11,7 +11,7 @@ const m = vi.hoisted(() => ({
 }));
 
 vi.mock("../lib/vendas", () => ({
-  carregarEventoAtivo: async () => ({ id: "ev1", codigo: "EVT1", nome: "Festa", chavePix: "123e4567-e12b-12d1-a456-426655440000" }),
+  carregarEventosAtivos: async () => [{ id: "ev1", codigo: "EVT1", nome: "Festa", chavePix: "123e4567-e12b-12d1-a456-426655440000" }],
   carregarCardapio: async () => [
     { id: "p1", nome: "Pastel", categoria: "Comidas", ordemCategoria: 1, valorCentavos: 700, estoque: 50, imagemUrl: null },
     { id: "r1", nome: "Rifa", categoria: "Rifas", ordemCategoria: 2, valorCentavos: 500, estoque: null, imagemUrl: null },
@@ -135,6 +135,44 @@ describe("PDV: pagamento em sequência", () => {
     await screen.findByText(/Escolha a forma de pagamento/);
     expect(m.descartarPix).toHaveBeenCalledWith("EVT1V000009A");
     expect(texto(/Falta/)).toMatch(/R\$\s*12,00/);
+  });
+
+  it("Pix: copia o código (com plano B se não conseguir) e envia pelo WhatsApp do cliente", async () => {
+    m.registrarPix.mockResolvedValue("EVT1V000010A");
+    await irParaPagamento();
+    fireEvent.click(botao("Pix"));
+    fireEvent.click(botao("Gerar QR Code"));
+    await screen.findByAltText("QR Code do Pix");
+
+    const writeText = vi.fn().mockResolvedValue(undefined);
+    Object.defineProperty(navigator, "clipboard", { value: { writeText }, configurable: true });
+    Object.defineProperty(window, "isSecureContext", { value: true, configurable: true });
+    fireEvent.click(botao("Copiar código Pix"));
+    await screen.findByText("Copiado ✓");
+    expect(writeText.mock.calls[0][0]).toMatch(/^000201/);          // é o BR Code
+
+    // plano B: sem como copiar, mostra o código para copiar à mão
+    Object.defineProperty(navigator, "clipboard", { value: undefined, configurable: true });
+    (document as unknown as { execCommand: unknown }).execCommand = () => false;
+    fireEvent.click(botao("Copiado ✓"));
+    await screen.findByText(/Código Pix Copia e Cola/);
+
+    fireEvent.click(botao("Enviar por WhatsApp"));
+    digitar("Celular do cliente", "11912345678");
+    const link = screen.getByText("Abrir WhatsApp") as HTMLAnchorElement;
+    expect(link.href).toMatch(/^https:\/\/wa\.me\/5511912345678\?text=/);
+    expect(decodeURIComponent(link.href)).toContain("EVT1V000010A");
+  });
+
+  it("WhatsApp: número incompleto não libera o botão", async () => {
+    m.registrarPix.mockResolvedValue("EVT1V000011A");
+    await irParaPagamento();
+    fireEvent.click(botao("Pix"));
+    fireEvent.click(botao("Gerar QR Code"));
+    await screen.findByAltText("QR Code do Pix");
+    fireEvent.click(botao("Enviar por WhatsApp"));
+    digitar("Celular do cliente", "1191234");
+    expect((screen.getByText("Abrir WhatsApp") as HTMLElement).tagName).toBe("SPAN");
   });
 
   it("valor maior que o que falta não confirma", async () => {

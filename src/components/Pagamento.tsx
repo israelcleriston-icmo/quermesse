@@ -1,5 +1,7 @@
 import QRCode from "qrcode";
 import { useRef, useState } from "react";
+import EnviarWhatsApp from "./EnviarWhatsApp";
+import { copiarTexto } from "../lib/copiar";
 import { gerarPayloadPix, montarMensagem } from "../pix/brcode";
 import { brl } from "../lib/dinheiro";
 import { novoId } from "../lib/id";
@@ -36,6 +38,8 @@ export default function Pagamento({ evento, aoVoltar, aoConcluir }: {
   const [ocupado, setOcupado] = useState("");
   const [erro, setErro] = useState("");
   const [confirmaSaida, setConfirmaSaida] = useState(false);
+  const [copiado, setCopiado] = useState<"sim" | "falhou" | "">("");
+  const [whatsapp, setWhatsapp] = useState(false);
   const fotoRef = useRef<HTMLInputElement>(null);
 
   const falta = faltaCentavos(total, pagamentos);
@@ -77,6 +81,7 @@ export default function Pagamento({ evento, aoVoltar, aoConcluir }: {
       });
       const qr = await QRCode.toDataURL(payload, { errorCorrectionLevel: "M", margin: 3, width: 360 });
       setPix({ txid, payload, qr, valor: valorC });
+      setCopiado("");
     } catch (e) {
       setErro(msg(e));
     } finally {
@@ -172,8 +177,18 @@ export default function Pagamento({ evento, aoVoltar, aoConcluir }: {
               <p className="font-bold text-marca-900">Pix de {brl(pix.valor)}</p>
               <img src={pix.qr} alt="QR Code do Pix" className="mx-auto my-2 w-full max-w-[320px] rounded-lg bg-white" />
               <p className="font-mono text-lg font-bold tracking-wide text-marca-700">{pix.txid}</p>
-              {"clipboard" in navigator && (
-                <button onClick={() => void navigator.clipboard.writeText(pix.payload)} className="mt-2 text-sm font-bold text-marca-600 underline">Copiar código Pix</button>
+              <div className="mt-3 grid grid-cols-2 gap-2">
+                <button onClick={async () => { setCopiado((await copiarTexto(pix.payload)) ? "sim" : "falhou"); }}
+                  className="rounded-xl bg-marca-100 py-3 text-sm font-bold text-marca-700 active:bg-marca-200">
+                  {copiado === "sim" ? "Copiado ✓" : "Copiar código Pix"}
+                </button>
+                <button onClick={() => setWhatsapp(true)} className="rounded-xl bg-green-100 py-3 text-sm font-bold text-green-800 active:bg-green-200">Enviar por WhatsApp</button>
+              </div>
+              {copiado === "falhou" && (
+                <label className="mt-2 block text-left text-xs font-semibold">Código Pix Copia e Cola (segure para copiar)
+                  <textarea readOnly value={pix.payload} onFocus={(e) => e.currentTarget.select()} rows={4}
+                    className="mt-1 w-full rounded-lg border p-2 font-mono text-xs" />
+                </label>
               )}
             </div>
             <p className="text-center text-sm text-slate-600">Confira no celular do cliente: data, hora e valor exatos (atenção a Pix agendado).</p>
@@ -251,6 +266,11 @@ export default function Pagamento({ evento, aoVoltar, aoConcluir }: {
           </div>
         )}
       </div>
+
+      {whatsapp && pix && (
+        <EnviarWhatsApp aoFechar={() => setWhatsapp(false)}
+          mensagem={`Pix ${evento.nome} — ${brl(pix.valor)} (${pix.txid}).\nPix Copia e Cola:\n${pix.payload}`} />
+      )}
 
       {confirmaSaida && (
         <div className="fixed inset-0 z-[60] flex items-center justify-center bg-black/60 p-6">

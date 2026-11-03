@@ -303,5 +303,25 @@ select t.check('T17i conselho cria evento e chave Pix (permitido); caixa/secreta
   and t.run(:'sec'::uuid, $q$insert into chaves_pix(organizacao_id,chave) values ('10000000-0000-0000-0000-000000000001','x')$q$) like 'ERR:new row violates row-level security%'
   and t.run(:'sec'::uuid, $q$insert into eventos(organizacao_id,codigo,nome,data_inicio,data_fim,chave_pix_id) values ('10000000-0000-0000-0000-000000000001','Z1','x',current_date,current_date,'40000000-0000-0000-0000-000000000001')$q$) like 'ERR:new row violates row-level security%');
 
+-- T18 copiar cardápio de outro evento
+select t.after('T18a secretaria copia o cardápio do evento 1 para o 2: todos os itens, estoque controlado entra com 0',
+  t.run(:'sec'::uuid, $q$select copiar_cardapio('50000000-0000-0000-0000-000000000001','50000000-0000-0000-0000-000000000002')::text$q$),
+  'OK:4', $x$select (select estoque_inicial from evento_produto where evento_id='50000000-0000-0000-0000-000000000002' and produto_id='30000000-0000-0000-0000-000000000001') = 0
+  and (select estoque_inicial is null from evento_produto where evento_id='50000000-0000-0000-0000-000000000002' and produto_id='30000000-0000-0000-0000-000000000002')
+  and (select valor from evento_produto where evento_id='50000000-0000-0000-0000-000000000002' and produto_id='30000000-0000-0000-0000-000000000001') = (select valor from evento_produto where evento_id='50000000-0000-0000-0000-000000000001' and produto_id='30000000-0000-0000-0000-000000000001')
+  and exists(select 1 from logs_auditoria where acao='CARDAPIO_COPIADO')$x$);
+select t.check('T18b copiar de novo não duplica nem sobrescreve (0 itens)',
+  t.run(:'con'::uuid, $q$select copiar_cardapio('50000000-0000-0000-0000-000000000001','50000000-0000-0000-0000-000000000002', true)::text$q$) = 'OK:0'
+  and (select estoque_inicial from evento_produto where evento_id='50000000-0000-0000-0000-000000000002' and produto_id='30000000-0000-0000-0000-000000000001') = 0);
+select t.check('T18c caixa não copia; mesmo evento e evento inexistente são recusados',
+  t.run(:'c1'::uuid, $q$select copiar_cardapio('50000000-0000-0000-0000-000000000001','50000000-0000-0000-0000-000000000002')::text$q$) like 'ERR:SEM_PERMISSAO%'
+  and t.run(:'con'::uuid, $q$select copiar_cardapio('50000000-0000-0000-0000-000000000001','50000000-0000-0000-0000-000000000001')::text$q$) like 'ERR:EVENTOS_IGUAIS%'
+  and t.run(:'con'::uuid, $q$select copiar_cardapio('50000000-0000-0000-0000-000000000001', gen_random_uuid())::text$q$) like 'ERR:EVENTO_INEXISTENTE%');
+insert into eventos(id,organizacao_id,codigo,nome,data_inicio,data_fim,chave_pix_id)
+  values ('50000000-0000-0000-0000-000000000004','10000000-0000-0000-0000-000000000001','EVT4','Evento novo',current_date,current_date,'40000000-0000-0000-0000-000000000001');
+select t.after('T18d com p_copiar_estoque o estoque inicial é levado junto',
+  t.run(:'adm'::uuid, $q$select copiar_cardapio('50000000-0000-0000-0000-000000000001','50000000-0000-0000-0000-000000000004', true)::text$q$),
+  'OK:4', $x$select (select estoque_inicial from evento_produto where evento_id='50000000-0000-0000-0000-000000000004' and produto_id='30000000-0000-0000-0000-000000000001') = 3$x$);
+
 select n, case when ok then 'PASS' else 'FAIL' end as resultado, nome from t.res where not ok order by n;
 select count(*) filter (where ok) as passou, count(*) filter (where not ok) as falhou from t.res;

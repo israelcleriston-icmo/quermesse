@@ -106,5 +106,8 @@ ao editar é possível alterar o valor e lançar uma **remessa** de estoque.
 - **Eventos e chaves Pix** (Conselho e admin): criar/editar evento (código em maiúsculas, datas, chave Pix existente ou nova,
   evento padrão), **encerrar** (cancela os QR Pix pendentes e bloqueia vendas) e reabrir. O código não muda depois de criado.
 - Para criar usuários no **dev local** a função precisa estar rodando: `npx supabase functions serve criar-usuario --no-verify-jwt`
-  (Docker aberto). Nos projetos da nuvem, `npx supabase functions deploy criar-usuario`.
+  (Docker aberto). Para redefinir senhas: `npx supabase functions serve redefinir-senha --no-verify-jwt` (use o `--env-file` ou rode as duas juntas com `npx supabase functions serve --no-verify-jwt`).
+  Nos projetos da nuvem, `npx supabase functions deploy criar-usuario` e `npx supabase functions deploy redefinir-senha --no-verify-jwt`.
+- No `supabase/config.toml` (criado pelo `supabase init`) deve haver `[functions.redefinir-senha]` com `verify_jwt = false`, igual ao da `criar-usuario`.
+- Publicação no GitHub Pages: veja `docs/PUBLICACAO.md`.
 - A tabela `health_check` (keep-alive do Google Apps Script) está na migration `20261101000000_health_check.sql` (idempotente).

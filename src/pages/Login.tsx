@@ -4,7 +4,7 @@ import { cpfValido, formatarCpf, limparCpf } from "../lib/cpf";
 import { useAuth } from "../store/auth";
 
 export default function Login() {
-  const { usuario, entrar } = useAuth();
+  const { usuario, entrar, aviso } = useAuth();
   const navigate = useNavigate();
   const [cpf, setCpf] = useState("");
   const [senha, setSenha] = useState("");
@@ -39,12 +39,16 @@ export default function Login() {
           value={cpf} onChange={(e) => setCpf(formatarCpf(e.target.value))} />
         <input className={campo} type="password" autoComplete="current-password" placeholder="Senha"
           value={senha} onChange={(e) => setSenha(e.target.value)} />
+        {aviso && !erro && <p role="status" className="rounded-lg bg-amber-100 p-3 font-medium text-amber-900">{aviso}</p>}
         {erro && <p role="alert" className="rounded-lg bg-red-50 p-3 font-medium text-red-700">{erro}</p>}
         <button type="submit" disabled={enviando}
           className="rounded-xl bg-marca-600 py-4 text-lg font-bold text-white active:bg-marca-700 disabled:bg-slate-300">
           {enviando ? "Entrando…" : "Entrar"}
         </button>
       </form>
+      <p className="text-center text-sm text-slate-600">
+        Esqueceu a senha? Peça ao administrador para definir uma senha temporária. No primeiro acesso você cria a sua.
+      </p>
     </main>
   );
 }

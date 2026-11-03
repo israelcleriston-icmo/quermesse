@@ -8,17 +8,23 @@ import Pdv from "./pages/Pdv";
 import Eventos from "./pages/Eventos";
 import Produtos from "./pages/Produtos";
 import Usuarios from "./pages/Usuarios";
+import TrocarSenha from "./pages/TrocarSenha";
+import { iniciarVigia } from "./lib/inatividade";
 import { useAuth } from "./store/auth";
 
 export default function App() {
   const iniciar = useAuth((s) => s.iniciar);
   useEffect(() => iniciar(), [iniciar]);
+  const logado = useAuth((s) => !!s.usuario);
+  const expirar = useAuth((s) => s.expirarPorInatividade);
+  useEffect(() => (logado ? iniciarVigia(() => void expirar()) : undefined), [logado, expirar]);
   return (
     <HashRouter>
       <FaixaAmbiente />
       <Routes>
         <Route path="/login" element={<Login />} />
         <Route path="/" element={<Protegida><Inicio /></Protegida>} />
+        <Route path="/trocar-senha" element={<Protegida permitirTroca><TrocarSenha /></Protegida>} />
         <Route path="/pdv" element={<Protegida><Pdv /></Protegida>} />
         <Route path="/produtos" element={<Protegida><Produtos /></Protegida>} />
         <Route path="/eventos" element={<Protegida><Eventos /></Protegida>} />

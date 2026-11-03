@@ -48,3 +48,11 @@ export async function alterarMembro(p: { usuarioId: string; organizacaoId: strin
     throw new Error(codigo ? MENSAGENS[codigo] : "Não foi possível alterar o usuário.");
   }
 }
+
+/** Admin define uma senha temporária para outro usuário (ele será obrigado a trocar no próximo login). */
+export async function redefinirSenhaDeUsuario(p: { organizacaoId: string; usuarioId: string; senha: string }): Promise<void> {
+  const { error } = await supabase.functions.invoke("redefinir-senha", {
+    body: { organizacao_id: p.organizacaoId, usuario_id: p.usuarioId, senha: p.senha },
+  });
+  if (error) throw new Error(await mensagemDaFuncao(error, "Não foi possível redefinir a senha. Verifique a conexão e tente de novo."));
+}
