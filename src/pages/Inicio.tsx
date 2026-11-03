@@ -1,4 +1,5 @@
 import { Link } from "react-router-dom";
+import InstalarApp from "../components/InstalarApp";
 import { useAuth, type Papel } from "../store/auth";
 import { totalItens, useSacola } from "../store/sacola";
 
@@ -39,6 +40,7 @@ export default function Inicio() {
           )}
         </div>
       </section>
+      <InstalarApp />
       <Link to="/trocar-senha" className="text-center font-semibold text-marca-700 underline">Trocar minha senha</Link>
       <button onClick={aoSair} className="rounded-xl border-2 border-marca-600 py-4 text-lg font-bold text-marca-700 active:bg-marca-100">
         Sair
