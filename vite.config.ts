@@ -23,6 +23,8 @@ export default defineConfig(({ mode }) => {
   return {
     base,
     plugins: [
+      // Ícone e favicon do treinamento têm a faixa laranja "TREINO"
+      { name: "icones-por-ambiente", transformIndexHtml: { order: "pre" as const, handler: (html: string) => html.replaceAll("__SUFIXO__", sufixo) } },
       react(),
       tailwindcss(),
       VitePWA({
@@ -39,8 +41,10 @@ export default defineConfig(({ mode }) => {
           theme_color: treino ? "#c2410c" : "#1f56d1",
           background_color: "#eef5ff",
           icons: [
-            { src: `icons/icon-192${sufixo}.png`, sizes: "192x192", type: "image/png" },
-            { src: `icons/icon-512${sufixo}.png`, sizes: "512x512", type: "image/png", purpose: "any maskable" },
+            { src: `icons/icon-192${sufixo}.png`, sizes: "192x192", type: "image/png", purpose: "any" },
+            { src: `icons/icon-512${sufixo}.png`, sizes: "512x512", type: "image/png", purpose: "any" },
+            { src: `icons/icon-maskable-192${sufixo}.png`, sizes: "192x192", type: "image/png", purpose: "maskable" },
+            { src: `icons/icon-maskable-512${sufixo}.png`, sizes: "512x512", type: "image/png", purpose: "maskable" },
           ],
         },
         workbox: { navigateFallback: "index.html", globPatterns: ["**/*.{js,css,html,png,svg}"] },
