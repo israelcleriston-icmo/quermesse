@@ -83,6 +83,22 @@ describe("gestão de usuários (admin)", () => {
     expect(m.rpc).toHaveBeenCalledWith("alterar_membro", { p_usuario: "u-cx", p_organizacao: "org1", p_papel: "conselho", p_ativo: false });
   });
 
+  it("esqueceu a senha: admin define senha temporária pela função redefinir-senha", async () => {
+    m.invoke.mockResolvedValue({ data: { ok: true }, error: null });
+    montar();
+    await screen.findByText("Caixa de Teste");
+    fireEvent.click(screen.getAllByText("Alterar")[0]);
+    fireEvent.click(screen.getByText("Esqueceu a senha?"));
+    digitar("Senha temporária", "curta");
+    fireEvent.click(screen.getByText("Definir senha temporária"));
+    expect((await screen.findByRole("alert")).textContent).toMatch(/pelo menos 8/);
+    expect(m.invoke).not.toHaveBeenCalled();
+    digitar("Senha temporária", "temporaria-9");
+    fireEvent.click(screen.getByText("Definir senha temporária"));
+    await screen.findByText("Senha temporária definida ✓");
+    expect(m.invoke).toHaveBeenCalledWith("redefinir-senha", { body: { organizacao_id: "org1", usuario_id: "u-cx", senha: "temporaria-9" } });
+  });
+
   it("quem não é admin é redirecionado", () => {
     useAuth.setState({ usuario: { id: "u", nome: "Sec", organizacaoId: "org1", papel: "secretaria" } });
     const { container } = montar();

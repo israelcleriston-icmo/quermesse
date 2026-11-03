@@ -19,7 +19,7 @@ function traduzir(error: { message?: string; code?: string }, padrao: string): s
 }
 
 function FormEvento({ organizacaoId, evento, chaves, aoSalvar, aoFechar }: {
-  organizacaoId: string; evento: Evento | null; chaves: Chave[]; aoSalvar: (aviso: string) => void; aoFechar: () => void;
+  organizacaoId: string; evento: Evento | null; chaves: Chave[]; aoSalvar: (aviso: string, criado?: { id: string; nome: string }) => void; aoFechar: () => void;
 }) {
   const edicao = evento !== null;
   const [nome, setNome] = useState(evento?.nome ?? "");
@@ -50,11 +50,15 @@ function FormEvento({ organizacaoId, evento, chaves, aoSalvar, aoFechar }: {
         chave = r.data.id;
       }
       const dados = { nome: nome.trim(), data_inicio: inicio, data_fim: fim, chave_pix_id: chave, padrao };
-      const r = edicao
-        ? await supabase.from("eventos").update(dados).eq("id", evento.id)
-        : await supabase.from("eventos").insert({ ...dados, organizacao_id: organizacaoId, codigo, status: "aberto" });
-      if (r.error) throw new Error(traduzir(r.error, "Não foi possível salvar o evento."));
-      aoSalvar(edicao ? "Evento atualizado ✓" : "Evento criado ✓");
+      if (edicao) {
+        const r = await supabase.from("eventos").update(dados).eq("id", evento.id);
+        if (r.error) throw new Error(traduzir(r.error, "Não foi possível salvar o evento."));
+        aoSalvar("Evento atualizado ✓");
+      } else {
+        const r = await supabase.from("eventos").insert({ ...dados, organizacao_id: organizacaoId, codigo, status: "aberto" }).select("id").single();
+        if (r.error || !r.data) throw new Error(traduzir(r.error ?? {}, "Não foi possível salvar o evento."));
+        aoSalvar("Evento criado ✓", { id: r.data.id, nome: dados.nome });
+      }
     } catch (e) {
       setErro(e instanceof Error ? e.message : "Erro ao salvar.");
       setOcupado(false);
@@ -105,6 +109,60 @@ function FormEvento({ organizacaoId, evento, chaves, aoSalvar, aoFechar }: {
   );
 }
 
+const MSG_COPIA: Record<string, string> = {
+  SEM_PERMISSAO: "Você não tem permissão para copiar o cardápio.",
+  EVENTOS_IGUAIS: "Escolha um evento diferente como origem.",
+  EVENTO_INEXISTENTE: "Evento não encontrado.",
+};
+
+function CopiarCardapio({ destino, origens, contagem, aoConcluir, aoFechar }: {
+  destino: { id: string; nome: string }; origens: Evento[]; contagem: Record<string, number>;
+  aoConcluir: (texto: string) => void; aoFechar: () => void;
+}) {
+  const [origem, setOrigem] = useState(origens[0]?.id ?? "");
+  const [estoque, setEstoque] = useState(false);
+  const [ocupado, setOcupado] = useState(false);
+  const [erro, setErro] = useState("");
+
+  async function copiar() {
+    if (ocupado || !origem) return;
+    setOcupado(true);
+    setErro("");
+    const { data, error } = await supabase.rpc("copiar_cardapio", { p_origem: origem, p_destino: destino.id, p_copiar_estoque: estoque });
+    if (error) {
+      const codigo = Object.keys(MSG_COPIA).find((c) => (error.message ?? "").includes(c));
+      setErro(codigo ? MSG_COPIA[codigo] : "Não foi possível copiar o cardápio.");
+      setOcupado(false);
+      return;
+    }
+    const n = Number(data ?? 0);
+    aoConcluir(n === 0 ? "Nada a copiar: o evento já tinha todos esses itens." : `${n} ${n === 1 ? "item copiado" : "itens copiados"} ✓`);
+  }
+
+  return (
+    <div className="fixed inset-0 z-[60] flex items-end bg-black/60" role="dialog" aria-label="Copiar cardápio">
+      <div className="mx-auto w-full max-w-md space-y-3 rounded-t-3xl bg-white p-5">
+        <h2 className="text-xl font-extrabold text-marca-900">Copiar cardápio para “{destino.nome}”</h2>
+        <label className="block text-sm font-semibold">Copiar do evento
+          <select aria-label="Evento de origem" value={origem} onChange={(e) => setOrigem(e.target.value)} className={campo}>
+            {origens.map((o) => <option key={o.id} value={o.id}>{o.nome} ({contagem[o.id] ?? 0} produtos)</option>)}
+          </select>
+        </label>
+        <label className="flex items-start gap-2 text-sm font-semibold">
+          <input type="checkbox" checked={estoque} onChange={(e) => setEstoque(e.target.checked)} className="mt-1 h-5 w-5" />
+          <span>Levar também o estoque inicial<span className="block font-normal text-slate-600">Sem marcar, produtos com estoque controlado entram zerados e você informa a carga depois.</span></span>
+        </label>
+        <p className="text-sm text-slate-600">Os preços são copiados. Itens que o evento já tem não são alterados.</p>
+        {erro && <p role="alert" className="rounded-lg bg-red-50 p-3 font-medium text-red-700">{erro}</p>}
+        <div className="grid grid-cols-2 gap-3">
+          <button onClick={aoFechar} className="rounded-xl bg-slate-200 py-4 text-lg font-bold">Cancelar</button>
+          <button onClick={copiar} disabled={ocupado || !origem} className="rounded-xl bg-green-600 py-4 text-lg font-extrabold text-white disabled:opacity-40">{ocupado ? "Copiando…" : "Copiar cardápio"}</button>
+        </div>
+      </div>
+    </div>
+  );
+}
+
 export default function Eventos() {
   const { usuario } = useAuth();
   const [eventos, setEventos] = useState<Evento[]>([]);
@@ -113,16 +171,23 @@ export default function Eventos() {
   const [encerrando, setEncerrando] = useState<Evento | null>(null);
   const [erro, setErro] = useState("");
   const [aviso, setAviso] = useState("");
+  const [contagem, setContagem] = useState<Record<string, number>>({});
+  const [novoCriado, setNovoCriado] = useState<{ id: string; nome: string } | null>(null);
+  const [copiando, setCopiando] = useState<{ id: string; nome: string } | null>(null);
 
   const carregar = useCallback(async () => {
-    const [e, c] = await Promise.all([
+    const [e, c, ep] = await Promise.all([
       supabase.from("eventos").select("id, codigo, nome, data_inicio, data_fim, status, padrao, chave_pix_id").order("data_inicio", { ascending: false }),
       supabase.from("chaves_pix").select("id, chave, descricao").eq("ativo", true).order("created_at"),
+      supabase.from("evento_produto").select("evento_id").eq("ativo", true),
     ]);
-    if (e.error || c.error) return setErro("Não foi possível carregar os eventos.");
+    if (e.error || c.error || ep.error) return setErro("Não foi possível carregar os eventos.");
     setErro("");
     setEventos((e.data ?? []) as Evento[]);
     setChaves((c.data ?? []) as Chave[]);
+    const cont: Record<string, number> = {};
+    for (const l of (ep.data ?? []) as { evento_id: string }[]) cont[l.evento_id] = (cont[l.evento_id] ?? 0) + 1;
+    setContagem(cont);
   }, []);
   useEffect(() => { void carregar(); }, [carregar]);
 
@@ -149,6 +214,19 @@ export default function Eventos() {
         <h1 className="text-xl font-extrabold text-marca-900">Eventos</h1>
       </header>
       <button onClick={() => setForm({ evento: null })} className="rounded-xl bg-marca-600 py-4 text-lg font-extrabold text-white active:bg-marca-700">+ Novo evento</button>
+      {novoCriado && (
+        <section role="status" className="space-y-2 rounded-2xl border-2 border-amber-500 bg-amber-50 p-3">
+          <p className="font-extrabold text-amber-900">Atenção: o cardápio é por evento</p>
+          <p className="text-sm text-amber-900">“{novoCriado.nome}” começa sem produtos. O caixa só consegue vender depois que o cardápio for montado.</p>
+          <div className="grid grid-cols-2 gap-2">
+            {eventos.some((e) => e.id !== novoCriado.id) && (
+              <button onClick={() => setCopiando(novoCriado)} className="rounded-lg bg-amber-600 py-3 font-bold text-white">Copiar de outro evento</button>
+            )}
+            <Link to="/produtos" className="rounded-lg bg-white py-3 text-center font-bold text-marca-700">Montar em Produtos</Link>
+          </div>
+          <button onClick={() => setNovoCriado(null)} className="w-full text-sm font-semibold text-amber-900 underline">Entendi</button>
+        </section>
+      )}
       {aviso && <p role="status" className="rounded-lg bg-green-100 p-3 text-center font-bold text-green-800">{aviso}</p>}
       {erro && <p role="alert" className="rounded-lg bg-red-50 p-3 font-medium text-red-700">{erro}</p>}
       <ul className="flex flex-col gap-2">
@@ -161,6 +239,9 @@ export default function Eventos() {
                   <p className="font-bold text-marca-900">{ev.nome}</p>
                   <p className="text-sm text-slate-500">{ev.codigo} · {dataBR(ev.data_inicio)} a {dataBR(ev.data_fim)}</p>
                   <p className="text-sm text-slate-500">Chave: {chave ? `${chave.descricao ? chave.descricao + " · " : ""}${resumo(chave.chave)}` : "—"}</p>
+                  {(contagem[ev.id] ?? 0) > 0
+                    ? <p className="text-sm text-slate-500">Cardápio: {contagem[ev.id]} {contagem[ev.id] === 1 ? "produto" : "produtos"}</p>
+                    : <p className="text-sm font-bold text-amber-700">⚠ Sem produtos no cardápio</p>}
                 </div>
                 <div className="flex shrink-0 flex-col items-end gap-1">
                   <span className={`rounded-full px-2 py-1 text-xs font-bold ${ev.status === "aberto" ? "bg-green-100 text-green-800" : "bg-slate-200 text-slate-700"}`}>{ev.status === "aberto" ? "Aberto" : "Encerrado"}</span>
@@ -173,6 +254,9 @@ export default function Eventos() {
                   ? <button onClick={() => setEncerrando(ev)} className="rounded-lg border-2 border-red-600 py-2 font-bold text-red-700">Encerrar</button>
                   : <button onClick={() => void mudarStatus(ev, "aberto")} className="rounded-lg bg-marca-600 py-2 font-bold text-white">Reabrir</button>}
               </div>
+              {ev.status === "aberto" && eventos.length > 1 && (
+                <button onClick={() => setCopiando({ id: ev.id, nome: ev.nome })} className="mt-2 w-full rounded-lg bg-amber-100 py-2 font-bold text-amber-900">Copiar cardápio de outro evento</button>
+              )}
             </li>
           );
         })}
@@ -188,7 +272,13 @@ export default function Eventos() {
       </section>
 
       {form && <FormEvento key={form.evento?.id ?? "novo"} organizacaoId={usuario.organizacaoId} evento={form.evento} chaves={chaves}
-        aoFechar={() => setForm(null)} aoSalvar={(t) => { setForm(null); avisar(t); }} />}
+        aoFechar={() => setForm(null)} aoSalvar={(t, criado) => { setForm(null); if (criado) setNovoCriado(criado); avisar(t); }} />}
+
+      {copiando && (
+        <CopiarCardapio destino={copiando} origens={eventos.filter((e) => e.id !== copiando.id)} contagem={contagem}
+          aoFechar={() => setCopiando(null)}
+          aoConcluir={(t) => { setCopiando(null); setNovoCriado(null); avisar(t); }} />
+      )}
 
       {encerrando && (
         <div className="fixed inset-0 z-[60] flex items-center justify-center bg-black/60 p-6">

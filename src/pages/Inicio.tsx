@@ -39,6 +39,7 @@ export default function Inicio() {
           )}
         </div>
       </section>
+      <Link to="/trocar-senha" className="text-center font-semibold text-marca-700 underline">Trocar minha senha</Link>
       <button onClick={aoSair} className="rounded-xl border-2 border-marca-600 py-4 text-lg font-bold text-marca-700 active:bg-marca-100">
         Sair
       </button>

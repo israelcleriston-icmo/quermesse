@@ -1,6 +1,7 @@
 import type { Session } from "@supabase/supabase-js";
 import { create } from "zustand";
 import { emailDoCpf } from "../lib/cpf";
+import { expirou, limparAtividade, registrarAtividade } from "../lib/inatividade";
 import { supabase } from "../lib/supabase";
 import { useSacola } from "./sacola";
 
@@ -10,15 +11,22 @@ export interface Usuario {
   nome: string;
   organizacaoId: string;
   papel: Papel;
+  /** Senha temporária definida pelo admin: precisa trocar antes de usar o sistema. */
+  deveTrocarSenha?: boolean;
 }
 
 interface Estado {
   carregando: boolean;
   usuario: Usuario | null;
+  /** Mensagem mostrada na tela de login (ex.: sessão encerrada por inatividade). */
+  aviso: string;
   iniciar: () => void;
   /** Devolve a mensagem de erro, ou null se entrou. */
   entrar: (cpf: string, senha: string) => Promise<string | null>;
   sair: () => Promise<void>;
+  expirarPorInatividade: () => Promise<void>;
+  /** Chamado depois de trocar a senha com sucesso. */
+  senhaTrocada: () => void;
 }
 
 async function carregarUsuario(session: Session | null): Promise<Usuario | null> {
@@ -29,19 +37,29 @@ async function carregarUsuario(session: Session | null): Promise<Usuario | null>
     supabase.from("membros").select("organizacao_id, papel").eq("usuario_id", id).eq("ativo", true).limit(1).maybeSingle(),
   ]);
   if (!p.data || !m.data) return null;
-  return { id, nome: p.data.nome, organizacaoId: m.data.organizacao_id, papel: m.data.papel as Papel };
+  return { id, nome: p.data.nome, organizacaoId: m.data.organizacao_id, papel: m.data.papel as Papel,
+    deveTrocarSenha: session.user.user_metadata?.deve_trocar_senha === true };
 }
 
+const AVISO_INATIVIDADE = "Sua sessão foi encerrada por inatividade. Entre de novo.";
 let iniciado = false;
 
 export const useAuth = create<Estado>((set) => ({
   carregando: true,
   usuario: null,
+  aviso: "",
 
   iniciar: () => {
     if (iniciado) return;
     iniciado = true;
     supabase.auth.getSession().then(async ({ data }) => {
+      if (data.session && expirou()) {              // ficou parado além do limite: encerra
+        await supabase.auth.signOut();
+        limparAtividade();
+        set({ usuario: null, carregando: false, aviso: AVISO_INATIVIDADE });
+        return;
+      }
+      if (data.session) registrarAtividade(Date.now(), true);
       set({ usuario: await carregarUsuario(data.session), carregando: false });
     });
     supabase.auth.onAuthStateChange((evento) => {
@@ -62,13 +80,24 @@ export const useAuth = create<Estado>((set) => ({
       return "Este usuário não tem acesso ativo. Fale com o administrador.";
     }
     useSacola.getState().limpar();          // nunca herda a sacola de quem usou antes
-    set({ usuario });
+    registrarAtividade(Date.now(), true);
+    set({ usuario, aviso: "" });
     return null;
   },
 
   sair: async () => {
     useSacola.getState().limpar();
     await supabase.auth.signOut();
+    limparAtividade();
     set({ usuario: null });
   },
+
+  expirarPorInatividade: async () => {
+    useSacola.getState().limpar();
+    await supabase.auth.signOut();
+    limparAtividade();
+    set({ usuario: null, aviso: AVISO_INATIVIDADE });
+  },
+
+  senhaTrocada: () => set((e) => (e.usuario ? { usuario: { ...e.usuario, deveTrocarSenha: false } } : e)),
 }));

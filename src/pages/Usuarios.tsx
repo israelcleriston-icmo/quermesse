@@ -1,7 +1,7 @@
 import { useCallback, useEffect, useState } from "react";
 import { Link, Navigate } from "react-router-dom";
 import { cpfValido, formatarCpf, limparCpf } from "../lib/cpf";
-import { PAPEIS, ROTULO_PAPEL, alterarMembro, criarUsuario, mascararCpf } from "../lib/gestao";
+import { PAPEIS, ROTULO_PAPEL, alterarMembro, criarUsuario, mascararCpf, redefinirSenhaDeUsuario } from "../lib/gestao";
 import { supabase } from "../lib/supabase";
 import { useAuth, type Papel } from "../store/auth";
 
@@ -64,7 +64,43 @@ function FormNovo({ organizacaoId, aoSalvar, aoFechar }: { organizacaoId: string
   );
 }
 
-function FormAlterar({ membro, organizacaoId, aoSalvar, aoFechar }: { membro: Membro; organizacaoId: string; aoSalvar: () => void; aoFechar: () => void }) {
+function RedefinirSenha({ membro, organizacaoId, aoConcluir }: { membro: Membro; organizacaoId: string; aoConcluir: () => void }) {
+  const [aberto, setAberto] = useState(false);
+  const [senha, setSenha] = useState("");
+  const [ocupado, setOcupado] = useState(false);
+  const [erro, setErro] = useState("");
+
+  async function redefinir() {
+    if (ocupado) return;
+    if (senha.length < 8) return setErro("A senha temporária deve ter pelo menos 8 caracteres.");
+    if (senha === (membro.perfis?.cpf ?? "")) return setErro("A senha não pode ser o próprio CPF.");
+    setOcupado(true);
+    setErro("");
+    try {
+      await redefinirSenhaDeUsuario({ organizacaoId, usuarioId: membro.usuario_id, senha });
+      aoConcluir();
+    } catch (e) {
+      setErro(e instanceof Error ? e.message : "Erro ao redefinir a senha.");
+      setOcupado(false);
+    }
+  }
+
+  if (!aberto) {
+    return <button onClick={() => setAberto(true)} className="w-full rounded-xl border-2 border-amber-500 py-3 font-bold text-amber-800">Esqueceu a senha?</button>;
+  }
+  return (
+    <div className="space-y-2 rounded-xl border-2 border-amber-500 bg-amber-50 p-3">
+      <label className="block text-sm font-semibold">Senha temporária (mínimo 8 caracteres)
+        <input aria-label="Senha temporária" value={senha} onChange={(e) => setSenha(e.target.value)} autoComplete="off" className={campo} />
+      </label>
+      <p className="text-sm text-slate-700">Entregue esta senha ao usuário. No próximo acesso ele será obrigado a criar uma senha nova.</p>
+      {erro && <p role="alert" className="rounded-lg bg-red-50 p-3 font-medium text-red-700">{erro}</p>}
+      <button onClick={redefinir} disabled={ocupado} className="w-full rounded-xl bg-amber-600 py-3 font-extrabold text-white disabled:opacity-40">{ocupado ? "Salvando…" : "Definir senha temporária"}</button>
+    </div>
+  );
+}
+
+function FormAlterar({ membro, organizacaoId, aoSalvar, aoFechar, aoRedefinir }: { membro: Membro; organizacaoId: string; aoSalvar: () => void; aoFechar: () => void; aoRedefinir?: () => void }) {
   const [papel, setPapel] = useState<Papel>(membro.papel);
   const [ativo, setAtivo] = useState(membro.ativo);
   const [ocupado, setOcupado] = useState(false);
@@ -95,6 +131,7 @@ function FormAlterar({ membro, organizacaoId, aoSalvar, aoFechar }: { membro: Me
         <label className="flex items-center gap-2 font-semibold">
           <input type="checkbox" checked={ativo} onChange={(e) => setAtivo(e.target.checked)} className="h-5 w-5" />Usuário ativo (pode entrar no sistema)
         </label>
+        <RedefinirSenha membro={membro} organizacaoId={organizacaoId} aoConcluir={() => aoRedefinir?.()} />
         {erro && <p role="alert" className="rounded-lg bg-red-50 p-3 font-medium text-red-700">{erro}</p>}
         <div className="grid grid-cols-2 gap-3">
           <button onClick={aoFechar} className="rounded-xl bg-slate-200 py-4 text-lg font-bold">Cancelar</button>
@@ -159,7 +196,7 @@ export default function Usuarios() {
         {membros.length === 0 && !erro && <li className="rounded-xl bg-white p-6 text-center text-slate-600">Nenhum usuário.</li>}
       </ul>
       {novo && <FormNovo organizacaoId={org} aoFechar={() => setNovo(false)} aoSalvar={() => salvou("Usuário criado ✓")} />}
-      {editando && <FormAlterar membro={editando} organizacaoId={org} aoFechar={() => setEditando(null)} aoSalvar={() => salvou("Usuário atualizado ✓")} />}
+      {editando && <FormAlterar membro={editando} organizacaoId={org} aoFechar={() => setEditando(null)} aoSalvar={() => salvou("Usuário atualizado ✓")} aoRedefinir={() => salvou("Senha temporária definida ✓")} />}
     </main>
   );
 }

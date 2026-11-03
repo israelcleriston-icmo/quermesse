@@ -4,7 +4,7 @@ import { MemoryRouter } from "react-router-dom";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 vi.mock("../lib/vendas", () => ({
-  carregarEventoAtivo: async () => ({ id: "ev1", codigo: "EVT1", nome: "Festa", chavePix: "k" }),
+  carregarEventosAtivos: async () => [{ id: "ev1", codigo: "EVT1", nome: "Festa", chavePix: "k" }],
   carregarCardapio: async () => [
     { id: "p1", nome: "Pastel de carne", categoria: "Comidas", ordemCategoria: 1, valorCentavos: 700, estoque: 3, imagemUrl: null },
     { id: "r1", nome: "Rifa", categoria: "Rifas", ordemCategoria: 2, valorCentavos: 500, estoque: null, imagemUrl: null },
