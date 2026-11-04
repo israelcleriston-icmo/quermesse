@@ -8,7 +8,7 @@ const m = vi.hoisted(() => ({ invoke: vi.fn(), rpc: vi.fn() }));
 vi.mock("../lib/supabase", () => {
   const membros = [
     { usuario_id: "u-adm", papel: "admin", ativo: true, perfis: { nome: "Admin de Teste", cpf: "52998224725" } },
-    { usuario_id: "u-cx", papel: "caixa", ativo: true, perfis: { nome: "Caixa de Teste", cpf: "11144477735" } },
+    { usuario_id: "u-cx", papel: "caixa", papeis_permitidos: ["caixa", "conselho"], ativo: true, perfis: { nome: "Caixa de Teste", cpf: "11144477735" } },
     { usuario_id: "u-off", papel: "secretaria", ativo: false, perfis: { nome: "Antiga Secretaria", cpf: "39053344705" } },
   ];
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
@@ -32,7 +32,7 @@ describe("gestão de usuários (admin)", () => {
   it("lista com CPF mascarado, perfil e situação; não oferece alterar a si mesmo", async () => {
     montar();
     await screen.findByText("Caixa de Teste");
-    expect(screen.getByText(/\*\*\*\.\*\*\*\.777-35 · Caixa/)).toBeTruthy();
+    expect(screen.getByText(/\*\*\*\.\*\*\*\.777-35 · Caixa \+ Conselho/)).toBeTruthy();
     expect(screen.getByText(/desativado/)).toBeTruthy();
     expect(screen.queryByText("11144477735")).toBeNull();                  // CPF completo nunca aparece
     expect(screen.getAllByText("Alterar")).toHaveLength(2);                 // caixa e secretaria; o admin (você) não
@@ -44,11 +44,12 @@ describe("gestão de usuários (admin)", () => {
     fireEvent.click(await screen.findByText("+ Novo usuário"));
     digitar("Nome", "Maria Silva");
     digitar("CPF", "52998224725");
+    fireEvent.click(screen.getByLabelText("Conselho Econômico"));          // Caixa já vem marcado; soma o Conselho
     digitar("Senha inicial (mínimo 8 caracteres)", "senhaforte1");
     fireEvent.click(screen.getByText("Criar usuário"));
     await screen.findByText("Usuário criado ✓");
     expect(m.invoke).toHaveBeenCalledWith("criar-usuario", {
-      body: { organizacao_id: "org1", nome: "Maria Silva", cpf: "52998224725", senha: "senhaforte1", papel: "caixa" },
+      body: { organizacao_id: "org1", nome: "Maria Silva", cpf: "52998224725", senha: "senhaforte1", papeis: ["caixa", "conselho"] },
     });
   });
 
@@ -76,11 +77,14 @@ describe("gestão de usuários (admin)", () => {
     montar();
     await screen.findByText("Caixa de Teste");
     fireEvent.click(screen.getAllByText("Alterar")[0]);
-    fireEvent.change(screen.getByLabelText("Perfil"), { target: { value: "conselho" } });
+    expect((screen.getByLabelText("Caixa") as HTMLInputElement).checked).toBe(true);
+    expect((screen.getByLabelText("Conselho Econômico") as HTMLInputElement).checked).toBe(true);
+    fireEvent.click(screen.getByLabelText("Caixa"));                        // tira o Caixa: fica só o Conselho
+    fireEvent.click(screen.getByLabelText("Secretaria"));                   // e libera a Secretaria
     fireEvent.click(screen.getByLabelText(/Usuário ativo/));
     fireEvent.click(screen.getByText("Salvar"));
     await screen.findByText("Usuário atualizado ✓");
-    expect(m.rpc).toHaveBeenCalledWith("alterar_membro", { p_usuario: "u-cx", p_organizacao: "org1", p_papel: "conselho", p_ativo: false });
+    expect(m.rpc).toHaveBeenCalledWith("alterar_membro", { p_usuario: "u-cx", p_organizacao: "org1", p_papeis: ["conselho", "secretaria"], p_ativo: false });
   });
 
   it("esqueceu a senha: admin define senha temporária pela função redefinir-senha", async () => {
