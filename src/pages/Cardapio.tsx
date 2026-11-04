@@ -133,14 +133,14 @@ export default function CardapioPublico() {
       </main>
 
       {totalItens > 0 && (
-        <button onClick={() => setRevisando(true)} className="fixed inset-x-3 bottom-4 z-30 mx-auto max-w-md rounded-2xl bg-marca-700 py-4 text-lg font-extrabold text-white shadow-xl active:bg-marca-900">
+        <button onClick={() => setRevisando(true)} className="fixed inset-x-3 bottom-[max(1rem,env(safe-area-inset-bottom))] z-30 mx-auto max-w-md rounded-2xl bg-marca-700 py-4 text-lg font-extrabold text-white shadow-xl active:bg-marca-900">
           Ver meu pedido · {totalItens} {totalItens === 1 ? "item" : "itens"} · {brl(total)}
         </button>
       )}
 
       {revisando && (
-        <div className="fixed inset-0 z-40 flex flex-col justify-end bg-black/60">
-          <div className="mx-auto flex max-h-[90%] w-full max-w-md flex-col rounded-t-3xl bg-white p-5">
+        <div className="fixed inset-0 z-40 flex h-[100dvh] flex-col justify-end bg-black/60">
+          <div className="mx-auto flex max-h-[90dvh] w-full max-w-md flex-col rounded-t-3xl bg-white p-5 pb-[max(1.25rem,env(safe-area-inset-bottom))]">
             <h2 className="mb-2 text-xl font-extrabold text-marca-900">Meu pedido</h2>
             <ul className="flex-1 divide-y divide-marca-100 overflow-y-auto">
               {escolhidos.map((i) => (

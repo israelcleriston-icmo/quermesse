@@ -36,10 +36,10 @@ export default function Login() {
         <h1 className="text-4xl font-extrabold text-marca-700">Quermesse</h1>
         <p className="mt-1 text-marca-900/70">Entre com o seu CPF</p>
       </header>
-      <form onSubmit={enviar} className="flex flex-col gap-4 rounded-2xl bg-white p-6 shadow-lg">
-        <input className={campo} inputMode="numeric" autoComplete="username" placeholder="CPF"
+      <form onSubmit={enviar} method="post" autoComplete="on" className="flex flex-col gap-4 rounded-2xl bg-white p-6 shadow-lg">
+        <input className={campo} id="username" name="username" type="text" inputMode="numeric" autoComplete="username" autoCapitalize="none" autoCorrect="off" placeholder="CPF"
           value={cpf} onChange={(e) => setCpf(formatarCpf(e.target.value))} />
-        <input className={campo} type="password" autoComplete="current-password" placeholder="Senha"
+        <input className={campo} id="password" name="password" type="password" autoComplete="current-password" placeholder="Senha"
           value={senha} onChange={(e) => setSenha(e.target.value)} />
         {aviso && !erro && <p role="status" className="rounded-lg bg-amber-100 p-3 font-medium text-amber-900">{aviso}</p>}
         {erro && <p role="alert" className="rounded-lg bg-red-50 p-3 font-medium text-red-700">{erro}</p>}

@@ -129,11 +129,10 @@ export default function Pdv() {
   const qtdTotal = totalItens(linhas);
 
   return (
-    <div className="mx-auto flex min-h-full max-w-md flex-col pb-28">
+    <div className="mx-auto flex min-h-full max-w-md flex-col pb-40">
       <header className="sticky top-6 z-30 bg-marca-600 p-3 text-white shadow">
         <div className="mb-2 flex items-center justify-between">
           <Link to="/" className="font-semibold">← Início</Link>
-          <button onClick={() => { setErroPedido(""); setLendoPedido(true); }} className="rounded-lg bg-white px-3 py-1 text-sm font-bold text-marca-700">📷 Pedido do cliente</button>
           {eventos && eventos.length > 1 ? (
             <select aria-label="Evento" value={idAtual ?? ""} onChange={(e) => trocarEvento(e.target.value)}
               className="max-w-[60%] truncate rounded-lg bg-white px-2 py-1 text-sm font-bold text-marca-900">
@@ -170,11 +169,14 @@ export default function Pdv() {
         <ul className="flex flex-col gap-3">{visiveis.map((i) => <Cartao key={i.id} item={i} />)}</ul>
       </main>
 
-      {qtdTotal > 0 && evento && (
-        <button onClick={() => setAberta(true)} className="fixed inset-x-3 bottom-4 z-30 mx-auto max-w-md rounded-2xl bg-marca-700 py-4 text-lg font-extrabold text-white shadow-xl active:bg-marca-900">
-          Ver sacola · {qtdTotal} {qtdTotal === 1 ? "item" : "itens"} · {brl(totalCentavos(linhas))}
-        </button>
-      )}
+      <div className="fixed inset-x-3 bottom-[max(1rem,env(safe-area-inset-bottom))] z-30 mx-auto flex max-w-md flex-col gap-2">
+        {qtdTotal > 0 && evento && (
+          <button onClick={() => setAberta(true)} className="rounded-2xl bg-marca-700 py-4 text-lg font-extrabold text-white shadow-xl active:bg-marca-900">
+            Ver sacola · {qtdTotal} {qtdTotal === 1 ? "item" : "itens"} · {brl(totalCentavos(linhas))}
+          </button>
+        )}
+        <button onClick={() => { setErroPedido(""); setLendoPedido(true); }} className="rounded-2xl bg-white py-3 text-base font-extrabold text-marca-700 shadow-xl ring-2 ring-marca-600 active:bg-marca-100">📷 Pedido do cliente</button>
+      </div>
 
       {aberta && evento && qtdTotal > 0 && (
         <Folha aoFechar={() => setAberta(false)} aoPagar={() => { setAberta(false); setPagando(true); }} />
