@@ -25,8 +25,8 @@ async function abrirLeitor() {
   fireEvent.click(await screen.findByText("Colar código"));
 }
 const colar = (t: string) => {
-  fireEvent.change(screen.getByLabelText("Código do pedido"), { target: { value: t } });
-  fireEvent.click(screen.getByText("Abrir pedido"));
+  fireEvent.change(screen.getByLabelText("Código lido"), { target: { value: t } });
+  fireEvent.click(screen.getByText("Usar este código"));
 };
 
 describe("PDV: abrir o pedido do fura-fila", () => {
@@ -69,7 +69,7 @@ describe("PDV: abrir o pedido do fura-fila", () => {
     expect(conf).toHaveBeenCalled();
     expect(Object.values(useSacola.getState().linhas).map((x) => x.nome)).toEqual(["Suco"]);   // manteve
     conf.mockReturnValue(true);
-    fireEvent.click(screen.getByText("Abrir pedido"));
+    fireEvent.click(screen.getByText("Usar este código"));
     await waitFor(() => expect(Object.values(useSacola.getState().linhas).map((x) => x.nome)).toEqual(["Pastel"]));
     conf.mockRestore();
   });

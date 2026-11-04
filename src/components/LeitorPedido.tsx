@@ -2,7 +2,7 @@ import { useEffect, useRef, useState } from "react";
 import { decodificarPixels, lerQrDeArquivo } from "../lib/lerQr";
 
 /** Lê o QR do pedido do cliente: câmera ao vivo; se não der, foto do QR ou colar o código. */
-export default function LeitorPedido({ aoLer, aoFechar, erro }: { aoLer: (texto: string) => void; aoFechar: () => void; erro?: string }) {
+export default function LeitorPedido({ aoLer, aoFechar, erro, titulo = "Ler pedido do cliente", dica = "Aponte para o QR no celular do cliente." }: { aoLer: (texto: string) => void; aoFechar: () => void; erro?: string; titulo?: string; dica?: string }) {
   const video = useRef<HTMLVideoElement>(null);
   const foto = useRef<HTMLInputElement>(null);
   const [camera, setCamera] = useState<"iniciando" | "ok" | "indisponivel">("iniciando");
@@ -59,12 +59,12 @@ export default function LeitorPedido({ aoLer, aoFechar, erro }: { aoLer: (texto:
   }
 
   return (
-    <div className="fixed inset-0 z-[60] flex flex-col bg-black/90 p-4 text-white" role="dialog" aria-label="Ler pedido do cliente">
+    <div className="fixed inset-0 z-[60] flex flex-col bg-black/90 p-4 text-white" role="dialog" aria-label={titulo}>
       <div className="mx-auto flex w-full max-w-md flex-1 flex-col gap-3">
-        <h2 className="text-center text-xl font-extrabold">Ler pedido do cliente</h2>
+        <h2 className="text-center text-xl font-extrabold">{titulo}</h2>
         {camera !== "indisponivel" && <video ref={video} playsInline muted className="aspect-square w-full rounded-2xl bg-black object-cover" />}
         {camera === "iniciando" && <p className="text-center text-sm">Abrindo a câmera…</p>}
-        {camera === "ok" && <p className="text-center text-sm">Aponte para o QR no celular do cliente.</p>}
+        {camera === "ok" && <p className="text-center text-sm">{dica}</p>}
         {camera === "indisponivel" && <p className="rounded-lg bg-amber-100 p-3 text-center text-sm font-semibold text-amber-900">Câmera indisponível (permissão negada ou navegador sem suporte). Use a foto do QR ou cole o código.</p>}
         {(erro || msg) && <p role="alert" className="rounded-lg bg-red-100 p-3 font-semibold text-red-800">{erro || msg}</p>}
         <input ref={foto} type="file" accept="image/*" hidden aria-label="Foto do QR do pedido" onChange={(e) => { void daFoto(e.target.files?.[0]); e.target.value = ""; }} />
@@ -74,8 +74,8 @@ export default function LeitorPedido({ aoLer, aoFechar, erro }: { aoLer: (texto:
         </div>
         {colar && (
           <div className="space-y-2">
-            <textarea aria-label="Código do pedido" rows={2} value={texto} onChange={(e) => setTexto(e.target.value)} className="w-full rounded-lg p-2 font-mono text-sm text-black" placeholder="QM1|…" />
-            <button onClick={() => aoLer(texto)} disabled={!texto.trim()} className="w-full rounded-xl bg-green-600 py-3 font-bold disabled:opacity-40">Abrir pedido</button>
+            <textarea aria-label="Código lido" rows={2} value={texto} onChange={(e) => setTexto(e.target.value)} className="w-full rounded-lg p-2 font-mono text-sm text-black" placeholder="Cole o código aqui" />
+            <button onClick={() => aoLer(texto)} disabled={!texto.trim()} className="w-full rounded-xl bg-green-600 py-3 font-bold disabled:opacity-40">Usar este código</button>
           </div>
         )}
         <button onClick={aoFechar} className="mt-auto rounded-xl bg-slate-200 py-4 text-lg font-bold text-slate-900">Fechar</button>
