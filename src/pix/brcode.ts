@@ -194,3 +194,56 @@ export function gerarPayloadPix(d: DadosPix): string {
     mensagem: d.mensagem,
   });
 }
+
+// ---------------------------------------------------------------------
+// Leitura de um BR Code existente (ex.: "copia e cola" ou QR gerado pelo banco)
+// ---------------------------------------------------------------------
+
+export interface PixLido {
+  chave: string;
+  nome: string | null;
+  cidade: string | null;
+}
+export type ResultadoLeitura = { ok: true; dados: PixLido } | { ok: false; erro: string };
+
+function lerCampos(texto: string): Map<string, string> | null {
+  const campos = new Map<string, string>();
+  let i = 0;
+  while (i < texto.length) {
+    if (i + 4 > texto.length) return null;
+    const id = texto.slice(i, i + 2);
+    const tam = Number(texto.slice(i + 2, i + 4));
+    if (!/^\d{2}$/.test(id) || !Number.isInteger(tam) || !/^\d{2}$/.test(texto.slice(i + 2, i + 4))) return null;
+    if (i + 4 + tam > texto.length) return null;
+    campos.set(id, texto.slice(i + 4, i + 4 + tam));
+    i += 4 + tam;
+  }
+  return campos;
+}
+
+/** Lê o "Pix Copia e Cola"/QR: confere o CRC e extrai a chave, o nome e a cidade. Recusa QR dinâmico. */
+export function lerBrCode(entrada: string): ResultadoLeitura {
+  const texto = entrada.replace(/\s+/g, "");
+  if (texto.length < 30) return { ok: false, erro: "Código muito curto. Cole o Pix Copia e Cola completo." };
+  if (!texto.startsWith("000201")) return { ok: false, erro: "Isto não parece um código Pix (deve começar com 000201)." };
+  if (texto.slice(-8, -4) !== "6304") return { ok: false, erro: "Código incompleto (faltou o final). Copie de novo." };
+  if (crc16(texto.slice(0, -4)) !== texto.slice(-4).toUpperCase()) {
+    return { ok: false, erro: "Código com erro (a verificação CRC não confere). Copie de novo." };
+  }
+  const campos = lerCampos(texto);
+  const conta = campos?.get("26") ?? campos?.get("27") ?? "";
+  const sub = lerCampos(conta);
+  if (!campos || !sub || !/br\.gov\.bcb\.pix/i.test(sub.get("00") ?? "")) {
+    return { ok: false, erro: "Não encontrei os dados Pix neste código." };
+  }
+  if (sub.has("25") && !sub.has("01")) {
+    return { ok: false, erro: "Este é um QR Pix dinâmico (com endereço). Só usamos Pix estático com chave." };
+  }
+  const chave = (sub.get("01") ?? "").trim();
+  if (!chave) return { ok: false, erro: "O código não traz uma chave Pix." };
+  const limpa = (v: string | undefined) => {
+    const t = (v ?? "").replace(/_/g, " ").replace(/\s+/g, " ").trim();
+    return t || null;
+  };
+  return { ok: true, dados: { chave, nome: limpa(campos.get("59")), cidade: limpa(campos.get("60")) } };
+}

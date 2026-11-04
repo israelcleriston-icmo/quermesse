@@ -1,7 +1,7 @@
 import { describe, expect, it } from "vitest";
 import {
   CIDADE_FIXA, NOME_FIXO, crc16, decodificar, formatarValor, gerarPayloadPix,
-  limiteMensagem, montarMensagem, montarPayload, montarTxid, normalizarTexto,
+  lerBrCode, limiteMensagem, montarMensagem, montarPayload, montarTxid, normalizarTexto,
 } from "./brcode";
 
 const CHAVE = "123e4567-e12b-12d1-a456-426655440000"; // chave aleatória do manual
@@ -156,5 +156,28 @@ describe("valor", () => {
 describe("normalizarTexto", () => {
   it("remove acentos e corta no limite", () => {
     expect(normalizarTexto("Paróquia São José do Ceará", 25)).toBe("Paroquia Sao Jose do Cear");
+  });
+});
+
+describe("lerBrCode (código gerado pelo banco)", () => {
+  const BANCO = "00020126580014br.gov.bcb.pix013629ac127f-8327-4a45-8879-2fedc34adb0c5204000053039865802BR5925MITRA_ARQUIDIOCESANA_DE_F6009Fortaleza610960743-21862290525EXYD1190752017791410198306304471D";
+  it("extrai chave, nome e cidade do QR real do banco (underscores viram espaços)", () => {
+    expect(lerBrCode(BANCO)).toEqual({ ok: true, dados: { chave: "29ac127f-8327-4a45-8879-2fedc34adb0c", nome: "MITRA ARQUIDIOCESANA DE F", cidade: "Fortaleza" } });
+  });
+  it("aceita quebras de linha e espaços colados junto", () => {
+    expect(lerBrCode(`  ${BANCO.slice(0, 40)}\n${BANCO.slice(40)}  `).ok).toBe(true);
+  });
+  it("lê também o que este sistema gera", () => {
+    const p = gerarPayloadPix({ chave: "29ac127f-8327-4a45-8879-2fedc34adb0c", valor: 15, txid: "EVT1V000001A", mensagem: "EVT1V000001A", nomeRecebedor: "Paroquia", cidade: "Fortaleza" });
+    expect(lerBrCode(p)).toMatchObject({ ok: true, dados: { chave: "29ac127f-8327-4a45-8879-2fedc34adb0c", nome: "Paroquia", cidade: "Fortaleza" } });
+  });
+  it("recusa CRC errado, texto qualquer, código cortado e QR dinâmico", () => {
+    expect(lerBrCode(BANCO.slice(0, -1) + "0")).toMatchObject({ ok: false, erro: expect.stringMatching(/CRC/) });
+    expect(lerBrCode("https://exemplo.com/qualquer-coisa-aqui-123456")).toMatchObject({ ok: false });
+    expect(lerBrCode(BANCO.slice(0, 60))).toMatchObject({ ok: false });
+    const url = "pix.exemplo.com.br/qr/v2/abcdef0123456789";
+    const dyn = "0014br.gov.bcb.pix25" + String(url.length) + url;
+    const corpo = "000201" + "26" + String(dyn.length).padStart(2, "0") + dyn + "52040000530398654041.005802BR5905TESTE6006FORTAL6304";
+    expect(lerBrCode(corpo + crc16(corpo))).toMatchObject({ ok: false, erro: expect.stringMatching(/dinâmico/) });
   });
 });

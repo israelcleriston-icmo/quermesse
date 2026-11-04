@@ -2,6 +2,8 @@ import { useCallback, useEffect, useMemo, useState } from "react";
 import { Link, Navigate } from "react-router-dom";
 import { brl } from "../lib/dinheiro";
 import Folha from "../components/Folha";
+import LeitorPedido from "../components/LeitorPedido";
+import { aplicarPedido, lerPedido } from "../lib/pedido";
 import Pagamento, { type Conclusao } from "../components/Pagamento";
 import { carregarCardapio, carregarEventosAtivos, type EventoAtivo, type ItemCardapio } from "../lib/vendas";
 import { totalCentavos, totalItens, useSacola } from "../store/sacola";
@@ -64,6 +66,9 @@ export default function Pdv() {
   const [categoria, setCategoria] = useState("Todas");
   const [aberta, setAberta] = useState(false);
   const [pagando, setPagando] = useState(false);
+  const [lendoPedido, setLendoPedido] = useState(false);
+  const [erroPedido, setErroPedido] = useState("");
+  const [avisosPedido, setAvisosPedido] = useState<string[]>([]);
   const [concluida, setConcluida] = useState<Conclusao | null>(null);
 
   // Evento em uso: o escolhido (se ainda estiver aberto) ou o primeiro da lista (o padrão).
@@ -83,6 +88,25 @@ export default function Pdv() {
     }
   }, [idAtual]);
   useEffect(() => { void atualizar(); }, [atualizar]);
+
+  function abrirPedido(texto: string) {
+    const r = lerPedido(texto);
+    if (!r.ok) return setErroPedido(r.erro);
+    if (!evento) return setErroPedido("Nenhum evento aberto.");
+    if (r.pedido.codigoEvento !== evento.codigo) {
+      return setErroPedido(`Este pedido é do evento ${r.pedido.codigoEvento}, mas o caixa está em ${evento.codigo}. Troque o evento no topo da tela.`);
+    }
+    const { linhas: novas, avisos } = aplicarPedido(itens, r.pedido);
+    if (novas.length === 0) return setErroPedido(avisos[0] ?? "Nenhum item do pedido está disponível.");
+    if (totalItens(linhas) > 0 && !window.confirm("Há uma venda em andamento. Substituir a sacola pelo pedido do cliente?")) return;
+    const s = useSacola.getState();
+    s.limpar();
+    for (const l of novas) for (let i = 0; i < l.qtd; i++) s.adicionar({ id: l.id, nome: l.nome, valorCentavos: l.valorCentavos, max: l.estoque });
+    setAvisosPedido(avisos);
+    setErroPedido("");
+    setLendoPedido(false);
+    setAberta(true);
+  }
 
   function trocarEvento(novoId: string) {
     if (novoId === idAtual) return;
@@ -109,6 +133,7 @@ export default function Pdv() {
       <header className="sticky top-6 z-30 bg-marca-600 p-3 text-white shadow">
         <div className="mb-2 flex items-center justify-between">
           <Link to="/" className="font-semibold">← Início</Link>
+          <button onClick={() => { setErroPedido(""); setLendoPedido(true); }} className="rounded-lg bg-white px-3 py-1 text-sm font-bold text-marca-700">📷 Pedido do cliente</button>
           {eventos && eventos.length > 1 ? (
             <select aria-label="Evento" value={idAtual ?? ""} onChange={(e) => trocarEvento(e.target.value)}
               className="max-w-[60%] truncate rounded-lg bg-white px-2 py-1 text-sm font-bold text-marca-900">
@@ -127,6 +152,13 @@ export default function Pdv() {
       </header>
 
       <main className="flex flex-1 flex-col gap-3 p-3">
+        {avisosPedido.length > 0 && (
+          <div role="status" className="rounded-lg bg-amber-100 p-3 text-sm font-semibold text-amber-900">
+            <p>Pedido do cliente aberto com ajustes:</p>
+            <ul className="list-disc pl-5">{avisosPedido.map((a, i) => <li key={i}>{a}</li>)}</ul>
+            <button onClick={() => setAvisosPedido([])} className="mt-1 underline">Entendi</button>
+          </div>
+        )}
         {erro && <p role="alert" className="rounded-lg bg-red-50 p-3 font-medium text-red-700">{erro}</p>}
         {evento === undefined && !erro && <p className="p-6 text-center text-marca-700">Carregando…</p>}
         {evento === null && <p className="rounded-xl bg-white p-6 text-center font-semibold">Nenhum evento aberto hoje. Peça ao Conselho para abrir o evento.</p>}
@@ -153,6 +185,8 @@ export default function Pdv() {
           aoVoltar={() => { setPagando(false); setAberta(true); }}
           aoConcluir={(c) => { setPagando(false); setConcluida(c); void atualizar(); }} />
       )}
+
+      {lendoPedido && <LeitorPedido aoLer={abrirPedido} aoFechar={() => setLendoPedido(false)} erro={erroPedido} />}
 
       {concluida && (
         <div className="fixed inset-0 z-50 flex items-center justify-center bg-green-700 p-6 text-white">

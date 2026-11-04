@@ -77,7 +77,9 @@ export default function Pagamento({ evento, aoVoltar, aoConcluir }: {
     try {
       const txid = await registrarPix(evento.id, valorC, vendaId);
       const payload = gerarPayloadPix({
-        chave: evento.chavePix, valor: valorC / 100, txid, mensagem: montarMensagem(txid, evento.chavePix, evento.nome),
+        chave: evento.chavePix, valor: valorC / 100, txid,
+        nomeRecebedor: evento.nomeRecebedor || undefined, cidade: evento.cidadeRecebedor || undefined,
+        mensagem: montarMensagem(txid, evento.chavePix, evento.nome),
       });
       const qr = await QRCode.toDataURL(payload, { errorCorrectionLevel: "M", margin: 3, width: 360 });
       setPix({ txid, payload, qr, valor: valorC });

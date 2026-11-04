@@ -5,6 +5,7 @@ import Protegida from "./components/Protegida";
 import Inicio from "./pages/Inicio";
 import Login from "./pages/Login";
 import Pdv from "./pages/Pdv";
+import CardapioPublico from "./pages/Cardapio";
 import Eventos from "./pages/Eventos";
 import Produtos from "./pages/Produtos";
 import Usuarios from "./pages/Usuarios";
@@ -22,6 +23,7 @@ export default function App() {
     <HashRouter>
       <FaixaAmbiente />
       <Routes>
+        <Route path="/cardapio" element={<CardapioPublico />} />
         <Route path="/login" element={<Login />} />
         <Route path="/" element={<Protegida><Inicio /></Protegida>} />
         <Route path="/trocar-senha" element={<Protegida permitirTroca><TrocarSenha /></Protegida>} />

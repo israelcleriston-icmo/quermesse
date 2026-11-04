@@ -1,4 +1,5 @@
 import { Link } from "react-router-dom";
+import Logo from "../components/Logo";
 import InstalarApp from "../components/InstalarApp";
 import { useAuth, type Papel } from "../store/auth";
 import { totalItens, useSacola } from "../store/sacola";
@@ -17,9 +18,12 @@ export default function Inicio() {
   };
   return (
     <main className="mx-auto flex min-h-full max-w-md flex-col gap-6 p-6">
-      <header className="rounded-2xl bg-marca-600 p-6 text-white shadow-lg">
-        <p className="text-sm opacity-80">{ROTULO[usuario.papel]}</p>
-        <h1 className="text-2xl font-extrabold">Olá, {usuario.nome.split(" ")[0]}!</h1>
+      <header className="flex items-center gap-4 rounded-2xl bg-marca-600 p-6 text-white shadow-lg">
+        <Logo tamanho={64} className="shrink-0" />
+        <div className="min-w-0">
+          <p className="text-sm opacity-80">{ROTULO[usuario.papel]}</p>
+          <h1 className="truncate text-2xl font-extrabold">Olá, {usuario.nome.split(" ")[0]}!</h1>
+        </div>
       </header>
       <section className="rounded-2xl bg-white p-6 shadow">
         <div className="flex flex-col gap-3">

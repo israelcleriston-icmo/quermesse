@@ -6,13 +6,14 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 type Reg = { tabela: string; linha: Record<string, unknown> };
 const m = vi.hoisted(() => ({ inserts: [] as Reg[], updates: [] as Reg[], erroInsert: null as null | { message: string }, rpc: vi.fn() }));
 
+vi.mock("qrcode", () => ({ default: { toDataURL: async () => "data:image/png;base64,AAAA" } }));
 vi.mock("../lib/supabase", () => {
   const dados: Record<string, unknown[]> = {
     eventos: [
       { id: "ev1", codigo: "EVT1", nome: "Festa do Padroeiro", data_inicio: "2026-11-05", data_fim: "2026-11-08", status: "aberto", padrao: true, chave_pix_id: "k1" },
       { id: "ev2", codigo: "EVT0", nome: "Festa antiga", data_inicio: "2025-06-01", data_fim: "2025-06-02", status: "encerrado", padrao: false, chave_pix_id: "k1" },
     ],
-    chaves_pix: [{ id: "k1", chave: "29ac127f-8327-4a45-8879-2fedc34adb0c", descricao: "Chave principal" }],
+    chaves_pix: [{ id: "k1", chave: "29ac127f-8327-4a45-8879-2fedc34adb0c", descricao: "Chave principal", nome_recebedor: null, cidade_recebedor: null }],
     evento_produto: [{ evento_id: "ev1" }, { evento_id: "ev1" }, { evento_id: "ev1" }],   // ev1 tem 3; ev2 nenhum
   };
   const consulta = (tabela: string) => {
@@ -65,7 +66,7 @@ describe("eventos e chaves Pix (Conselho/admin)", () => {
     digitar("Descrição da chave", "Chave de dezembro");
     fireEvent.click(screen.getByText("Salvar"));
     await screen.findByText("Evento criado ✓");
-    expect(ins("chaves_pix")).toEqual({ organizacao_id: "org1", chave: "123e4567-e12b-12d1-a456-426655440000", descricao: "Chave de dezembro" });
+    expect(ins("chaves_pix")).toEqual({ organizacao_id: "org1", chave: "123e4567-e12b-12d1-a456-426655440000", descricao: "Chave de dezembro", nome_recebedor: null, cidade_recebedor: null });
     expect(ins("eventos")).toEqual({
       nome: "Quermesse de Dezembro", data_inicio: "2026-12-05", data_fim: "2026-12-07", chave_pix_id: "k-nova",
       padrao: false, organizacao_id: "org1", codigo: "DEZ26", status: "aberto",
@@ -108,6 +109,56 @@ describe("eventos e chaves Pix (Conselho/admin)", () => {
     fireEvent.click(screen.getByText("Copiar cardápio de outro evento"));
     fireEvent.click(screen.getByText("Copiar cardápio"));
     expect((await screen.findByRole("alert")).textContent).toMatch(/permissão/);
+  });
+
+  const BANCO = "00020126580014br.gov.bcb.pix013629ac127f-8327-4a45-8879-2fedc34adb0c5204000053039865802BR5925MITRA_ARQUIDIOCESANA_DE_F6009Fortaleza610960743-21862290525EXYD1190752017791410198306304471D";
+
+  it("nova chave: colar o código do banco preenche chave, nome e cidade, e grava tudo", async () => {
+    montar();
+    fireEvent.click(await screen.findByText("+ Novo evento"));
+    digitar("Nome", "Festa");
+    digitar("Código", "FES");
+    digitar("Início", "2026-12-05");
+    digitar("Término", "2026-12-06");
+    fireEvent.change(screen.getByLabelText("Chave Pix"), { target: { value: "nova" } });
+    digitar("Código Pix do banco", BANCO);
+    fireEvent.click(screen.getByText("Ler dados do código"));
+    await screen.findByText(/Dados lidos: MITRA ARQUIDIOCESANA DE F · Fortaleza/);
+    expect((screen.getByLabelText("Nova chave") as HTMLInputElement).value).toBe("29ac127f-8327-4a45-8879-2fedc34adb0c");
+    expect((screen.getByLabelText("Nome do recebedor") as HTMLInputElement).value).toBe("MITRA ARQUIDIOCESANA DE F");
+    fireEvent.click(screen.getByText("Salvar"));
+    await screen.findByText("Evento criado ✓");
+    expect(ins("chaves_pix")).toMatchObject({ chave: "29ac127f-8327-4a45-8879-2fedc34adb0c", nome_recebedor: "MITRA ARQUIDIOCESANA DE F", cidade_recebedor: "Fortaleza" });
+  });
+
+  it("código inválido mostra o motivo e não preenche nada", async () => {
+    montar();
+    fireEvent.click(await screen.findByText("+ Novo evento"));
+    fireEvent.change(screen.getByLabelText("Chave Pix"), { target: { value: "nova" } });
+    digitar("Código Pix do banco", BANCO.slice(0, -1) + "0");
+    fireEvent.click(screen.getByText("Ler dados do código"));
+    expect((await screen.findByRole("alert")).textContent).toMatch(/CRC/);
+    expect((screen.getByLabelText("Nova chave") as HTMLInputElement).value).toBe("");
+  });
+
+  it("chave já cadastrada: atualizar nome e cidade com o código do banco; recusa código de outra chave", async () => {
+    montar();
+    await screen.findByText("Festa do Padroeiro");
+    fireEvent.click(screen.getByText("Atualizar dados"));
+    digitar("Código Pix do banco", BANCO);
+    fireEvent.click(screen.getByText("Ler dados do código"));
+    await screen.findByText(/Dados lidos/);
+    fireEvent.click(screen.getByText("Salvar"));
+    await screen.findByText("Dados da chave atualizados ✓");
+    expect(m.updates[0]).toEqual({ tabela: "chaves_pix", linha: { nome_recebedor: "MITRA ARQUIDIOCESANA DE F", cidade_recebedor: "Fortaleza" } });
+  });
+
+  it("QR do cardápio: abre o cartaz com o link público do evento", async () => {
+    montar();
+    fireEvent.click(await screen.findByText("QR do cardápio (fura-fila)"));
+    await screen.findByAltText("QR do cardápio");
+    expect(screen.getByText(/#\/cardapio\?e=ev1/)).toBeTruthy();
+    expect(screen.getByText("Baixar imagem").getAttribute("download")).toBe("cardapio-EVT1.png");
   });
 
   it("valida o término antes do início e o código; mensagem amigável para código repetido", async () => {
