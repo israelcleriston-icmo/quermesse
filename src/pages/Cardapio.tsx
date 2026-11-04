@@ -3,6 +3,7 @@
 import QRCode from "qrcode";
 import { useEffect, useMemo, useState } from "react";
 import { useSearchParams } from "react-router-dom";
+import Logo from "../components/Logo";
 import { brl } from "../lib/dinheiro";
 import { urlImagem } from "../lib/imagens";
 import { MAX_LINHAS, MAX_QTD, codificarPedido } from "../lib/pedido";
@@ -88,7 +89,10 @@ export default function CardapioPublico() {
   return (
     <div className="mx-auto flex min-h-full max-w-md flex-col pb-28">
       <header className="sticky top-6 z-30 bg-marca-600 p-3 text-white shadow">
-        <p className="mb-2 truncate text-center text-sm font-bold">{cardapio?.evento.nome ?? "Cardápio"}</p>
+        <div className="mb-2 flex items-center justify-center gap-2">
+          <Logo tamanho={32} />
+          <p className="truncate text-sm font-bold">{cardapio?.evento.nome ?? "Cardápio"}</p>
+        </div>
         <input value={busca} onChange={(e) => setBusca(e.target.value)} placeholder="Buscar produto" className="w-full rounded-xl bg-white px-4 py-3 text-marca-900 outline-none" />
         <div className="mt-2 flex gap-2 overflow-x-auto pb-1">
           {categorias.map((c) => (

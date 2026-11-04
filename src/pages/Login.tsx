@@ -1,6 +1,7 @@
 import { useState, type FormEvent } from "react";
 import { Navigate, useNavigate } from "react-router-dom";
 import { cpfValido, formatarCpf, limparCpf } from "../lib/cpf";
+import Logo from "../components/Logo";
 import { useAuth } from "../store/auth";
 
 export default function Login() {
@@ -30,7 +31,8 @@ export default function Login() {
   const campo = "w-full rounded-xl border-2 border-marca-200 bg-white px-4 py-4 text-lg outline-none focus:border-marca-600";
   return (
     <main className="mx-auto flex min-h-full max-w-md flex-col justify-center gap-6 p-6">
-      <header className="text-center">
+      <header className="flex flex-col items-center text-center">
+        <Logo tamanho={120} className="mb-3" />
         <h1 className="text-4xl font-extrabold text-marca-700">Quermesse</h1>
         <p className="mt-1 text-marca-900/70">Entre com o seu CPF</p>
       </header>
