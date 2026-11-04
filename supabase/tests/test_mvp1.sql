@@ -345,5 +345,84 @@ select t.check('T19f admin não pode tirar o perfil admin de si mesmo',
   t.run(:'adm'::uuid, $q$select alterar_membro('00000000-0000-0000-0000-0000000000d1','10000000-0000-0000-0000-000000000001',array['admin','caixa'],true)::text$q$) like 'OK:%'
   and t.run(:'adm'::uuid, $q$select alterar_membro('00000000-0000-0000-0000-0000000000d1','10000000-0000-0000-0000-000000000001',array['caixa','conselho'],true)::text$q$) like 'ERR:NAO_PODE_ALTERAR_A_SI_MESMO%');
 
+-- ---------- T20: turno do caixa, sangria, fechamento cego e conferência -------
+\set ev5 '50000000-0000-0000-0000-000000000005'
+\set a3 '00000000-0000-0000-0000-0000000000a3'
+\set a4 '00000000-0000-0000-0000-0000000000a4'
+insert into auth.users(id,email) values (:'a3','cx3'),(:'a4','ambos');
+insert into perfis(id,nome,cpf) values (:'a3','Caixa 3','66666666666'),(:'a4','Caixa e Conselho','77777777777');
+insert into membros(usuario_id,organizacao_id,papel) values (:'a3','10000000-0000-0000-0000-000000000001','caixa');
+insert into membros(usuario_id,organizacao_id,papel,papeis_permitidos) values (:'a4','10000000-0000-0000-0000-000000000001','caixa','{caixa,conselho}');
+insert into eventos(id,organizacao_id,codigo,nome,data_inicio,data_fim,chave_pix_id)
+  values (:'ev5','10000000-0000-0000-0000-000000000001','EVT5','Evento do caixa',
+  (now() at time zone 'America/Sao_Paulo')::date - 1,(now() at time zone 'America/Sao_Paulo')::date + 1,'40000000-0000-0000-0000-000000000001');
+insert into evento_produto(id,evento_id,produto_id,valor,estoque_inicial) values
+ ('60000000-0000-0000-0000-000000000051',:'ev5','30000000-0000-0000-0000-000000000002',10.00,null);
+\set r5 '[{"ep":"60000000-0000-0000-0000-000000000051","q":2}]'
+\set r5b '[{"ep":"60000000-0000-0000-0000-000000000051","q":1}]'
+
+select t.check('T20a só caixa/secretaria abrem turno; fundo inválido e evento inexistente são recusados',
+  t.run(:'con'::uuid, format($q$select abrir_turno('%s', 50)::text$q$, :'ev5')) like 'ERR:SEM_PERMISSAO%'
+  and t.run(:'a3'::uuid, format($q$select abrir_turno('%s', -1)::text$q$, :'ev5')) like 'ERR:FUNDO_INVALIDO%'
+  and t.run(:'a3'::uuid, $q$select abrir_turno(gen_random_uuid(), 50)::text$q$) like 'ERR:EVENTO_INEXISTENTE%');
+select t.after('T20b caixa abre o turno com fundo de 50,00; abrir outro enquanto há um aberto é recusado',
+  t.run(:'a3'::uuid, format($q$select abrir_turno('%s', 50)::text$q$, :'ev5')),
+  'OK:%', format($x$select (select fundo_inicial from turnos_caixa where caixa_id='%s' and fechado_em is null) = 50
+    and (select count(*) from logs_auditoria where acao='TURNO_ABERTO') >= 1$x$, :'a3'));
+select t.check('T20c segundo turno aberto do mesmo caixa -> TURNO_JA_ABERTO',
+  t.run(:'a3'::uuid, format($q$select abrir_turno('%s', 10)::text$q$, :'ev5')) like 'ERR:TURNO_JA_ABERTO%');
+-- vendas do turno: dinheiro 20,00 (recebido 50) e débito 10,00
+select t.check('T20d vendas em dinheiro e débito entram no turno',
+  t.fin(:'a3'::uuid,'a0000000-0000-0000-0000-0000000020d1',:'ev5',:'r5','[{"forma":"dinheiro","valor":20,"recebido":50}]') like 'OK:%'
+  and t.fin(:'a3'::uuid,'a0000000-0000-0000-0000-0000000020d2',:'ev5',:'r5b','[{"forma":"debito","valor":10}]') like 'OK:%');
+select t.after('T20e caixa registra sangria de 30,00; só o dono do turno registra; valor inválido é recusado',
+  t.run(:'a3'::uuid, format($q$select registrar_sangria('%s', 30, 'Levar ao cofre')::text$q$, (select id from turnos_caixa where caixa_id=:'a3')) ),
+  'OK:%', $x$select (select count(*) from sangrias) = 1$x$);
+select t.check('T20f outro caixa, valor zero e valor com 3 casas são recusados',
+  t.run(:'c2'::uuid, format($q$select registrar_sangria('%s', 5)::text$q$, (select id from turnos_caixa where caixa_id=:'a3')) ) like 'ERR:SEM_PERMISSAO%'
+  and t.run(:'a3'::uuid, format($q$select registrar_sangria('%s', 0)::text$q$, (select id from turnos_caixa where caixa_id=:'a3')) ) like 'ERR:VALOR_INVALIDO%'
+  and t.run(:'a3'::uuid, format($q$select registrar_sangria('%s', 1.234)::text$q$, (select id from turnos_caixa where caixa_id=:'a3')) ) like 'ERR:VALOR_INVALIDO%');
+select t.check('T20g caixa não confirma sangria; Conselho confirma; confirmar de novo é recusado',
+  t.run(:'a3'::uuid, format($q$select confirmar_sangria('%s')::text$q$, (select id from sangrias limit 1))) like 'ERR:SEM_PERMISSAO%'
+  and t.run(:'con'::uuid, format($q$select confirmar_sangria('%s')::text$q$, (select id from sangrias limit 1))) like 'OK:%'
+  and t.run(:'con'::uuid, format($q$select confirmar_sangria('%s')::text$q$, (select id from sangrias limit 1))) like 'ERR:JA_CONFIRMADA%');
+select t.check('T20h caixa não vê o turno de outro caixa (RLS)',
+  t.run(:'c2'::uuid, 'select count(*)::text from turnos_caixa') = 'OK:0'
+  and t.run(:'a3'::uuid, 'select count(*)::text from turnos_caixa') = 'OK:1'
+  and t.run(:'con'::uuid, 'select count(*)::text from turnos_caixa') = 'OK:1');
+select t.check('T20i caixa não pode chamar a conferência nem conferir',
+  t.run(:'a3'::uuid, format($q$select conferencia_turnos('%s')::text$q$, :'ev5')) like 'ERR:SEM_PERMISSAO%'
+  and t.run(:'a3'::uuid, format($q$select conferir_turno('%s')::text$q$, (select id from turnos_caixa limit 1))) like 'ERR:SEM_PERMISSAO%');
+select t.check('T20j não confere turno ainda aberto',
+  t.run(:'con'::uuid, format($q$select conferir_turno('%s')::text$q$, (select id from turnos_caixa limit 1))) like 'ERR:TURNO_ABERTO%');
+-- fechamento cego: contou 39,00 (esperado 50 + 20 − 30 = 40,00; débito não entra na gaveta)
+select t.after('T20k caixa fecha informando só o contado (39,00); fechar de novo ou sangrar depois é recusado',
+  t.run(:'a3'::uuid, format($q$select fechar_turno('%s', 39, 'faltou um troco')::text$q$, (select id from turnos_caixa limit 1))),
+  'OK:%', $x$select (select contado_dinheiro from turnos_caixa limit 1) = 39$x$);
+select t.check('T20l turno fechado não aceita novo fechamento nem sangria',
+  t.run(:'a3'::uuid, format($q$select fechar_turno('%s', 40)::text$q$, (select id from turnos_caixa limit 1))) like 'ERR:TURNO_FECHADO%'
+  and t.run(:'a3'::uuid, format($q$select registrar_sangria('%s', 5)::text$q$, (select id from turnos_caixa limit 1))) like 'ERR:TURNO_FECHADO%');
+select t.check('T20m Conselho vê esperado 40,00, contado 39,00 e diferença −1,00; débito aparece como outra forma',
+  (select (j->0->>'esperado')::numeric = 40 and (j->0->>'contado')::numeric = 39 and (j->0->>'diferenca')::numeric = -1
+          and (j->0->'outras_formas'->>'debito')::numeric = 10 and (j->0->>'vendas_dinheiro')::numeric = 20
+          and (j->0->>'sangrias_pendentes')::numeric = 0
+     from (select substring(t.run(:'con'::uuid, format($q$select conferencia_turnos('%s')::text$q$, :'ev5')) from 4)::jsonb as j) x));
+select t.check('T20n Conselho confere o turno; conferir de novo é recusado',
+  t.run(:'con'::uuid, format($q$select conferir_turno('%s','ok, diferença de 1 real')::text$q$, (select id from turnos_caixa limit 1))) like 'OK:%'
+  and t.run(:'con'::uuid, format($q$select conferir_turno('%s')::text$q$, (select id from turnos_caixa limit 1))) like 'ERR:JA_CONFERIDO%');
+-- quem tem caixa + conselho não confere nem confirma o próprio turno
+select t.check('T20o pessoa com os dois perfis abre, sangra e fecha como caixa',
+  t.run(:'a4'::uuid, format($q$select abrir_turno('%s', 20)::text$q$, :'ev5')) like 'OK:%');
+select t.check('T20p ...registra sangria e fecha o turno',
+  t.run(:'a4'::uuid, format($q$select registrar_sangria('%s', 5)::text$q$, (select id from turnos_caixa where caixa_id=:'a4'))) like 'OK:%');
+select t.check('T20q ...fecha o turno',
+  t.run(:'a4'::uuid, format($q$select fechar_turno('%s', 15)::text$q$, (select id from turnos_caixa where caixa_id=:'a4'))) like 'OK:%');
+select t.check('T20r ...troca para conselho',
+  t.run(:'a4'::uuid, $q$select trocar_papel('10000000-0000-0000-0000-000000000001','conselho')::text$q$) like 'OK:%');
+select t.check('T20s como conselho NÃO vê esperado/diferença do próprio turno e não confere nem confirma sangria dele',
+  substring(t.run(:'a4'::uuid, format($q$select conferencia_turnos('%s')::text$q$, :'ev5')) from 4)::jsonb @> '[{"proprio": true, "esperado": null, "diferenca": null}]'
+  and t.run(:'a4'::uuid, format($q$select conferir_turno('%s')::text$q$, (select id from turnos_caixa where caixa_id=:'a4'))) like 'ERR:PROPRIO_TURNO%'
+  and t.run(:'a4'::uuid, format($q$select confirmar_sangria('%s')::text$q$, (select id from sangrias where turno_id=(select id from turnos_caixa where caixa_id=:'a4')))) like 'ERR:PROPRIO_TURNO%');
+
 select n, case when ok then 'PASS' else 'FAIL' end as resultado, nome from t.res where not ok order by n;
 select count(*) filter (where ok) as passou, count(*) filter (where not ok) as falhou from t.res;
