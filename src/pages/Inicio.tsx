@@ -46,13 +46,16 @@ export default function Inicio() {
       <section className="rounded-2xl bg-white p-6 shadow">
         <div className="flex flex-col gap-3">
           {(usuario.papel === "caixa" || usuario.papel === "secretaria") && (
-            <Link to="/pdv" className="block rounded-xl bg-marca-600 py-5 text-center text-xl font-extrabold text-white active:bg-marca-700">Abrir caixa</Link>
+            <Link to="/pdv" className="block rounded-xl bg-marca-600 py-5 text-center text-xl font-extrabold text-white active:bg-marca-700">Vender (PDV)</Link>
           )}
           {(usuario.papel === "caixa" || usuario.papel === "secretaria") && (
             <Link to="/turno" className="block rounded-xl bg-marca-100 py-5 text-center text-xl font-extrabold text-marca-700 active:bg-marca-200">Meu turno de caixa</Link>
           )}
           {(usuario.papel === "conselho" || usuario.papel === "admin") && (
             <Link to="/conferencia" className="block rounded-xl bg-marca-100 py-5 text-center text-xl font-extrabold text-marca-700 active:bg-marca-200">Conferência dos caixas</Link>
+          )}
+          {(usuario.papel === "conselho" || usuario.papel === "admin") && (
+            <Link to="/vendas" className="block rounded-xl bg-marca-100 py-5 text-center text-xl font-extrabold text-marca-700 active:bg-marca-200">Vendas e anulações</Link>
           )}
           {(usuario.papel === "secretaria" || usuario.papel === "conselho" || usuario.papel === "admin") && (
             <Link to="/produtos" className="block rounded-xl bg-marca-100 py-5 text-center text-xl font-extrabold text-marca-700 active:bg-marca-200">Produtos</Link>

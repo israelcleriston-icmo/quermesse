@@ -424,5 +424,60 @@ select t.check('T20s como conselho NÃO vê esperado/diferença do próprio turn
   and t.run(:'a4'::uuid, format($q$select conferir_turno('%s')::text$q$, (select id from turnos_caixa where caixa_id=:'a4'))) like 'ERR:PROPRIO_TURNO%'
   and t.run(:'a4'::uuid, format($q$select confirmar_sangria('%s')::text$q$, (select id from sangrias where turno_id=(select id from turnos_caixa where caixa_id=:'a4')))) like 'ERR:PROPRIO_TURNO%');
 
+-- ---------- T21: anulação de venda ------------------------------------------
+\set ev6 '50000000-0000-0000-0000-000000000006'
+insert into eventos(id,organizacao_id,codigo,nome,data_inicio,data_fim,chave_pix_id)
+  values (:'ev6','10000000-0000-0000-0000-000000000001','EVT6','Evento da anulação',
+  (now() at time zone 'America/Sao_Paulo')::date - 1,(now() at time zone 'America/Sao_Paulo')::date + 1,'40000000-0000-0000-0000-000000000001');
+insert into evento_produto(id,evento_id,produto_id,valor,estoque_inicial) values
+ ('60000000-0000-0000-0000-000000000061',:'ev6','30000000-0000-0000-0000-000000000001',10.00,5);
+\set r6a '[{"ep":"60000000-0000-0000-0000-000000000061","q":3}]'
+select t.after('T21a venda de 3 pastéis (30,00): 10 em débito + 20 em dinheiro; estoque 5 -> 2',
+  t.fin(:'a3'::uuid,'a0000000-0000-0000-0000-0000000021a1',:'ev6',:'r6a','[{"forma":"debito","valor":10},{"forma":"dinheiro","valor":20,"recebido":20}]'),
+  'OK:%', $x$select (select estoque_atual from evento_produto where id='60000000-0000-0000-0000-000000000061') = 2$x$);
+select t.check('T21b caixa não anula; Conselho sem motivo é recusado',
+  t.run(:'a3'::uuid, $q$select anular_venda('a0000000-0000-0000-0000-0000000021a1', null, '[]', 'erro de digitação', true)::text$q$) like 'ERR:SEM_PERMISSAO%'
+  and t.run(:'con'::uuid, $q$select anular_venda('a0000000-0000-0000-0000-0000000021a1', null, '[{"forma":"debito","valor":10},{"forma":"dinheiro","valor":20}]', '  ', true)::text$q$) like 'ERR:MOTIVO_OBRIGATORIO%');
+select t.check('T21c quantidade acima da vendida e item de outra venda são recusados',
+  t.run(:'con'::uuid, format($q$select anular_venda('a0000000-0000-0000-0000-0000000021a1', '[{"item":"%s","q":4}]', '[{"forma":"dinheiro","valor":40}]', 'cliente desistiu', true)::text$q$, (select id from vendas_itens where venda_id='a0000000-0000-0000-0000-0000000021a1'))) like 'ERR:QUANTIDADE_INVALIDA%'
+  and t.run(:'con'::uuid, format($q$select anular_venda('a0000000-0000-0000-0000-0000000021a1', '[{"item":"%s","q":1}]', '[{"forma":"dinheiro","valor":10}]', 'cliente desistiu', true)::text$q$, (select id from vendas_itens where venda_id='a0000000-0000-0000-0000-0000000020d1'))) like 'ERR:QUANTIDADE_INVALIDA%');
+select t.check('T21d estorno que não bate com o valor, forma não paga ou acima do pago é recusado',
+  t.run(:'con'::uuid, format($q$select anular_venda('a0000000-0000-0000-0000-0000000021a1', '[{"item":"%s","q":1}]', '[{"forma":"dinheiro","valor":5}]', 'cliente desistiu', true)::text$q$, (select id from vendas_itens where venda_id='a0000000-0000-0000-0000-0000000021a1'))) like 'ERR:ESTORNO_INVALIDO%'
+  and t.run(:'con'::uuid, format($q$select anular_venda('a0000000-0000-0000-0000-0000000021a1', '[{"item":"%s","q":1}]', '[{"forma":"pix","valor":10}]', 'cliente desistiu', true)::text$q$, (select id from vendas_itens where venda_id='a0000000-0000-0000-0000-0000000021a1'))) like 'ERR:ESTORNO_INVALIDO%'
+  and t.run(:'con'::uuid, format($q$select anular_venda('a0000000-0000-0000-0000-0000000021a1', '[{"item":"%s","q":3}]', '[{"forma":"debito","valor":30}]', 'cliente desistiu', true)::text$q$, (select id from vendas_itens where venda_id='a0000000-0000-0000-0000-0000000021a1'))) like 'ERR:ESTORNO_INVALIDO%');
+select t.after('T21e anulação parcial de 1 pastel (10,00 em débito): venda fica parcialmente anulada e o estoque volta (2 -> 3)',
+  t.run(:'con'::uuid, format($q$select anular_venda('a0000000-0000-0000-0000-0000000021a1', '[{"item":"%s","q":1}]', '[{"forma":"debito","valor":10}]', 'cliente devolveu um pastel', true)->>'status'$q$, (select id from vendas_itens where venda_id='a0000000-0000-0000-0000-0000000021a1'))),
+  'OK:parcialmente_anulada', $x$select (select estoque_atual from evento_produto where id='60000000-0000-0000-0000-000000000061') = 3
+    and (select status::text from vendas where id='a0000000-0000-0000-0000-0000000021a1') = 'parcialmente_anulada'
+    and (select quantidade_anulada from vendas_itens where venda_id='a0000000-0000-0000-0000-0000000021a1') = 1
+    and exists(select 1 from logs_auditoria where acao='VENDA_ANULADA' and detalhes->>'motivo' = 'cliente devolveu um pastel')$x$);
+select t.check('T21f o débito já devolvido não pode ser devolvido de novo',
+  t.run(:'con'::uuid, format($q$select anular_venda('a0000000-0000-0000-0000-0000000021a1', '[{"item":"%s","q":1}]', '[{"forma":"debito","valor":10}]', 'segunda tentativa', true)::text$q$, (select id from vendas_itens where venda_id='a0000000-0000-0000-0000-0000000021a1'))) like 'ERR:ESTORNO_INVALIDO%');
+select t.after('T21g anular o resto (2 pastéis, 20,00 em dinheiro), sem devolver ao estoque: venda anulada e estoque continua 3',
+  t.run(:'con'::uuid, $q$select anular_venda('a0000000-0000-0000-0000-0000000021a1', null, '[{"forma":"dinheiro","valor":20}]', 'perdeu o pedido; o produto já foi feito', false)->>'status'$q$),
+  'OK:anulada', $x$select (select estoque_atual from evento_produto where id='60000000-0000-0000-0000-000000000061') = 3
+    and (select status::text from vendas where id='a0000000-0000-0000-0000-0000000021a1') = 'anulada'$x$);
+select t.check('T21h venda totalmente anulada não anula de novo',
+  t.run(:'con'::uuid, $q$select anular_venda('a0000000-0000-0000-0000-0000000021a1', null, '[]', 'de novo', true)::text$q$) like 'ERR:VENDA_ANULADA%');
+select t.check('T21i só Conselho/admin leem as anulações (caixa e outros não)',
+  t.run(:'con'::uuid, 'select count(*)::text from anulacoes') = 'OK:2'
+  and t.run(:'a3'::uuid, 'select count(*)::text from anulacoes') = 'OK:0'
+  and t.run(:'con'::uuid, 'select count(*)::text from anulacoes_estornos') = 'OK:2');
+-- quem tem caixa + conselho não anula a própria venda (a4 já está como conselho; volta a caixa, vende, e tenta)
+select t.check('T21j pessoa com os dois perfis vende como caixa e, como conselho, não anula a própria venda',
+  t.run(:'a4'::uuid, $q$select trocar_papel('10000000-0000-0000-0000-000000000001','caixa')::text$q$) like 'OK:%'
+  and t.fin(:'a4'::uuid,'a0000000-0000-0000-0000-0000000021b1',:'ev6','[{"ep":"60000000-0000-0000-0000-000000000061","q":1}]','[{"forma":"debito","valor":10}]') like 'OK:%'
+  and t.run(:'a4'::uuid, $q$select trocar_papel('10000000-0000-0000-0000-000000000001','conselho')::text$q$) like 'OK:%'
+  and t.run(:'a4'::uuid, $q$select anular_venda('a0000000-0000-0000-0000-0000000021b1', null, '[{"forma":"debito","valor":10}]', 'teste da própria venda', true)::text$q$) like 'ERR:PROPRIA_VENDA%');
+-- devolução em dinheiro durante o turno entra na conta da gaveta
+select t.check('T21k a3 abre novo turno (fundo 10,00) e vende 1 pastel de 10,00 em dinheiro',
+  t.run(:'a3'::uuid, format($q$select abrir_turno('%s', 10)::text$q$, :'ev6')) like 'OK:%'
+  and t.fin(:'a3'::uuid,'a0000000-0000-0000-0000-0000000021c1',:'ev6','[{"ep":"60000000-0000-0000-0000-000000000061","q":1}]','[{"forma":"dinheiro","valor":10,"recebido":10}]') like 'OK:%');
+select t.check('T21l Conselho devolve esse dinheiro; a3 fecha contando 10,00; esperado = 10 + 10 − 10 = 10,00 e diferença 0',
+  t.run(:'con'::uuid, $q$select anular_venda('a0000000-0000-0000-0000-0000000021c1', null, '[{"forma":"dinheiro","valor":10}]', 'cliente desistiu na hora', true)::text$q$) like 'OK:%'
+  and t.run(:'a3'::uuid, format($q$select fechar_turno('%s', 10)::text$q$, (select id from turnos_caixa where caixa_id=:'a3' and fechado_em is null))) like 'OK:%'
+  and (select (j @> format('[{"caixa":"Caixa 3","esperado":10,"contado":10,"diferenca":0,"devolucoes_dinheiro":10,"vendas_dinheiro":10}]')::jsonb)
+         from (select substring(t.run(:'con'::uuid, format($q$select conferencia_turnos('%s')::text$q$, :'ev6')) from 4)::jsonb as j) x));
+
 select n, case when ok then 'PASS' else 'FAIL' end as resultado, nome from t.res where not ok order by n;
 select count(*) filter (where ok) as passou, count(*) filter (where not ok) as falhou from t.res;

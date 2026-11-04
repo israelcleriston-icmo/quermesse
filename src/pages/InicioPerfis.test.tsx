@@ -23,11 +23,11 @@ describe("troca de perfil na tela inicial", () => {
   it("quem tem dois perfis troca; o menu muda e o banco é avisado", async () => {
     m.rpc.mockResolvedValue({ error: null });
     montar();
-    expect(screen.getByText("Abrir caixa")).toBeTruthy();
+    expect(screen.getByText("Vender (PDV)")).toBeTruthy();
     expect(screen.queryByText("Eventos e chaves Pix")).toBeNull();
     fireEvent.change(screen.getByLabelText("Trocar perfil"), { target: { value: "conselho" } });
     await screen.findByText("Eventos e chaves Pix");
-    expect(screen.queryByText("Abrir caixa")).toBeNull();
+    expect(screen.queryByText("Vender (PDV)")).toBeNull();
     expect(m.rpc).toHaveBeenCalledWith("trocar_papel", { p_organizacao: "org1", p_papel: "conselho" });
   });
 
