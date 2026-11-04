@@ -24,6 +24,7 @@ export interface Deps {
     cpf: string;
     organizacaoId: string;
     papel: Papel;
+    papeis: Papel[];
   }): Promise<string | null>;
   /** Apagar o login também apaga perfil e membro (ON DELETE CASCADE). */
   removerLogin(id: string): Promise<void>;
@@ -85,13 +86,16 @@ export async function tratar(req: Request, deps: Deps): Promise<Response> {
   const nome = String(corpo.nome ?? "").trim();
   const cpf = limparCpf(String(corpo.cpf ?? ""));
   const senha = String(corpo.senha ?? "");
-  const papel = String(corpo.papel ?? "") as Papel;
+  // `papeis` (lista) é o formato novo; `papel` (um só) continua aceito. O primeiro da lista começa ativo.
+  const bruto = Array.isArray(corpo.papeis) ? corpo.papeis.map((x) => String(x)) : [String(corpo.papel ?? "")];
+  const papeis = [...new Set(bruto)] as Papel[];
+  const papel = papeis[0];
 
   if (nome.length < 2 || nome.length > 100) {
     return erro(400, "DADOS_INVALIDOS", "Nome deve ter entre 2 e 100 caracteres.");
   }
   if (!cpfValido(cpf)) return erro(400, "CPF_INVALIDO", "CPF inválido.");
-  if (!PAPEIS.includes(papel)) return erro(400, "DADOS_INVALIDOS", "Papel inválido.");
+  if (papeis.length === 0 || !papeis.every((p) => PAPEIS.includes(p))) return erro(400, "DADOS_INVALIDOS", "Papel inválido.");
   if (senha.length < SENHA_MIN || senha.length > 72) {
     return erro(400, "SENHA_FRACA", `A senha deve ter de ${SENHA_MIN} a 72 caracteres.`);
   }
@@ -117,6 +121,7 @@ export async function tratar(req: Request, deps: Deps): Promise<Response> {
     cpf,
     organizacaoId,
     papel,
+    papeis,
   });
   if (falha) {
     console.error("gravarPerfilEMembro falhou:", falha);
@@ -128,8 +133,8 @@ export async function tratar(req: Request, deps: Deps): Promise<Response> {
   await deps.registrarLog({
     organizacaoId,
     usuarioId: chamador.id,
-    detalhes: { novo_usuario_id: login.id, papel },
+    detalhes: { novo_usuario_id: login.id, papel, papeis },
   });
 
-  return resp(201, { id: login.id, nome, papel });
+  return resp(201, { id: login.id, nome, papel, papeis });
 }

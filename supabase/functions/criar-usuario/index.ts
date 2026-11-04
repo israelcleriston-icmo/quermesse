@@ -62,13 +62,14 @@ const deps: Deps = {
     return { id: data.user.id };
   },
 
-  async gravarPerfilEMembro({ id, nome, cpf, organizacaoId, papel }) {
+  async gravarPerfilEMembro({ id, nome, cpf, organizacaoId, papel, papeis }) {
     const p = await supabase.from("perfis").insert({ id, nome, cpf });
     if (p.error) return p.error.message;
     const m = await supabase.from("membros").insert({
       usuario_id: id,
       organizacao_id: organizacaoId,
       papel,
+      papeis_permitidos: papeis,
     });
     return m.error ? m.error.message : null;
   },

@@ -1,3 +1,4 @@
+import { useState } from "react";
 import { Link } from "react-router-dom";
 import Logo from "../components/Logo";
 import InstalarApp from "../components/InstalarApp";
@@ -9,12 +10,18 @@ const ROTULO: Record<Papel, string> = {
 };
 
 export default function Inicio() {
-  const { usuario, sair } = useAuth();
+  const { usuario, sair, trocarPapel } = useAuth();
+  const [erroTroca, setErroTroca] = useState("");
   const linhas = useSacola((s) => s.linhas);
   if (!usuario) return null;
   const aoSair = () => {
     if (totalItens(linhas) > 0 && !window.confirm("Há uma venda em andamento. Sair descarta a sacola. Sair mesmo?")) return;
     void sair();
+  };
+  const aoTrocar = async (p: Papel) => {
+    if (p === usuario.papel) return;
+    if (totalItens(linhas) > 0 && !window.confirm("Há uma venda em andamento. Trocar de perfil descarta a sacola. Trocar mesmo?")) return;
+    setErroTroca((await trocarPapel(p)) ?? "");
   };
   return (
     <main className="mx-auto flex min-h-full max-w-md flex-col gap-6 p-6">
@@ -25,6 +32,18 @@ export default function Inicio() {
           <h1 className="truncate text-2xl font-extrabold">Olá, {usuario.nome.split(" ")[0]}!</h1>
         </div>
       </header>
+      {(usuario.papeis?.length ?? 0) > 1 && (
+        <section aria-label="Trocar perfil" className="rounded-2xl bg-white p-4 shadow">
+          <p className="mb-2 text-sm font-semibold text-slate-600">Você está como <strong>{ROTULO[usuario.papel]}</strong>. Trocar perfil:</p>
+          <div className="flex flex-wrap gap-2">
+            {(usuario.papeis ?? []).map((p) => (
+              <button key={p} onClick={() => void aoTrocar(p)} aria-pressed={p === usuario.papel}
+                className={`rounded-full px-4 py-2 font-bold ${p === usuario.papel ? "bg-marca-600 text-white" : "bg-marca-100 text-marca-700 active:bg-marca-200"}`}>{ROTULO[p]}</button>
+            ))}
+          </div>
+          {erroTroca && <p role="alert" className="mt-2 rounded-lg bg-red-50 p-2 text-sm font-medium text-red-700">{erroTroca}</p>}
+        </section>
+      )}
       <section className="rounded-2xl bg-white p-6 shadow">
         <div className="flex flex-col gap-3">
           {(usuario.papel === "caixa" || usuario.papel === "secretaria") && (

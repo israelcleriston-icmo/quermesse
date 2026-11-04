@@ -5,14 +5,32 @@ import { PAPEIS, ROTULO_PAPEL, alterarMembro, criarUsuario, mascararCpf, redefin
 import { supabase } from "../lib/supabase";
 import { useAuth, type Papel } from "../store/auth";
 
-interface Membro { usuario_id: string; papel: Papel; ativo: boolean; perfis: { nome: string; cpf: string } | null }
+interface Membro { usuario_id: string; papel: Papel; papeis_permitidos?: Papel[] | null; ativo: boolean; perfis: { nome: string; cpf: string } | null }
+
+const perfisDe = (m: Membro): Papel[] => (m.papeis_permitidos?.length ? m.papeis_permitidos : [m.papel]);
+
+/** Marca um ou mais perfis. O primeiro marcado é o que a pessoa usa ao entrar pela primeira vez. */
+function SeletorPerfis({ valor, aoMudar }: { valor: Papel[]; aoMudar: (v: Papel[]) => void }) {
+  return (
+    <fieldset className="space-y-1">
+      <legend className="text-sm font-semibold">Perfis (marque um ou mais)</legend>
+      {PAPEIS.map((p) => (
+        <label key={p} className="flex items-center gap-2 py-1 text-lg">
+          <input type="checkbox" className="h-5 w-5" checked={valor.includes(p)}
+            onChange={(e) => aoMudar(e.target.checked ? [...valor, p] : valor.filter((x) => x !== p))} />
+          {ROTULO_PAPEL[p]}
+        </label>
+      ))}
+    </fieldset>
+  );
+}
 
 const campo = "w-full rounded-lg border-2 border-marca-200 bg-white px-3 py-3 text-lg outline-none focus:border-marca-600";
 
 function FormNovo({ organizacaoId, aoSalvar, aoFechar }: { organizacaoId: string; aoSalvar: () => void; aoFechar: () => void }) {
   const [nome, setNome] = useState("");
   const [cpf, setCpf] = useState("");
-  const [papel, setPapel] = useState<Papel>("caixa");
+  const [papeis, setPapeis] = useState<Papel[]>(["caixa"]);
   const [senha, setSenha] = useState("");
   const [ocupado, setOcupado] = useState(false);
   const [erro, setErro] = useState("");
@@ -22,12 +40,13 @@ function FormNovo({ organizacaoId, aoSalvar, aoFechar }: { organizacaoId: string
     const numeros = limparCpf(cpf);
     if (nome.trim().length < 2) return setErro("Digite o nome.");
     if (!cpfValido(numeros)) return setErro("CPF inválido.");
+    if (papeis.length === 0) return setErro("Marque pelo menos um perfil.");
     if (senha.length < 8) return setErro("A senha inicial deve ter pelo menos 8 caracteres.");
     if (senha === numeros) return setErro("A senha não pode ser o próprio CPF.");
     setOcupado(true);
     setErro("");
     try {
-      await criarUsuario({ organizacaoId, nome: nome.trim(), cpf: numeros, senha, papel });
+      await criarUsuario({ organizacaoId, nome: nome.trim(), cpf: numeros, senha, papeis });
       aoSalvar();
     } catch (e) {
       setErro(e instanceof Error ? e.message : "Erro ao criar o usuário.");
@@ -45,11 +64,7 @@ function FormNovo({ organizacaoId, aoSalvar, aoFechar }: { organizacaoId: string
         <label className="text-sm font-semibold">CPF
           <input aria-label="CPF" inputMode="numeric" value={cpf} onChange={(e) => setCpf(formatarCpf(e.target.value))} className={campo} />
         </label>
-        <label className="text-sm font-semibold">Perfil
-          <select aria-label="Perfil" value={papel} onChange={(e) => setPapel(e.target.value as Papel)} className={campo}>
-            {PAPEIS.map((p) => <option key={p} value={p}>{ROTULO_PAPEL[p]}</option>)}
-          </select>
-        </label>
+        <SeletorPerfis valor={papeis} aoMudar={setPapeis} />
         <label className="text-sm font-semibold">Senha inicial (mínimo 8 caracteres)
           <input aria-label="Senha inicial" value={senha} onChange={(e) => setSenha(e.target.value)} className={campo} autoComplete="off" />
         </label>
@@ -101,17 +116,21 @@ function RedefinirSenha({ membro, organizacaoId, aoConcluir }: { membro: Membro;
 }
 
 function FormAlterar({ membro, organizacaoId, aoSalvar, aoFechar, aoRedefinir }: { membro: Membro; organizacaoId: string; aoSalvar: () => void; aoFechar: () => void; aoRedefinir?: () => void }) {
-  const [papel, setPapel] = useState<Papel>(membro.papel);
+  const [papeis, setPapeis] = useState<Papel[]>(() => {
+    const l = perfisDe(membro);
+    return [membro.papel, ...l.filter((p) => p !== membro.papel)];
+  });
   const [ativo, setAtivo] = useState(membro.ativo);
   const [ocupado, setOcupado] = useState(false);
   const [erro, setErro] = useState("");
 
   async function salvar() {
     if (ocupado) return;
+    if (papeis.length === 0) return setErro("Marque pelo menos um perfil.");
     setOcupado(true);
     setErro("");
     try {
-      await alterarMembro({ usuarioId: membro.usuario_id, organizacaoId, papel, ativo });
+      await alterarMembro({ usuarioId: membro.usuario_id, organizacaoId, papeis, ativo });
       aoSalvar();
     } catch (e) {
       setErro(e instanceof Error ? e.message : "Erro ao alterar.");
@@ -123,11 +142,7 @@ function FormAlterar({ membro, organizacaoId, aoSalvar, aoFechar, aoRedefinir }:
     <div className="fixed inset-0 z-50 flex items-end bg-black/60">
       <div className="mx-auto w-full max-w-md space-y-3 rounded-t-3xl bg-white p-5">
         <h2 className="text-xl font-extrabold text-marca-900">{membro.perfis?.nome}</h2>
-        <label className="block text-sm font-semibold">Perfil
-          <select aria-label="Perfil" value={papel} onChange={(e) => setPapel(e.target.value as Papel)} className={campo}>
-            {PAPEIS.map((p) => <option key={p} value={p}>{ROTULO_PAPEL[p]}</option>)}
-          </select>
-        </label>
+        <SeletorPerfis valor={papeis} aoMudar={setPapeis} />
         <label className="flex items-center gap-2 font-semibold">
           <input type="checkbox" checked={ativo} onChange={(e) => setAtivo(e.target.checked)} className="h-5 w-5" />Usuário ativo (pode entrar no sistema)
         </label>
@@ -153,7 +168,7 @@ export default function Usuarios() {
 
   const carregar = useCallback(async () => {
     if (!org) return;
-    const { data, error } = await supabase.from("membros").select("usuario_id, papel, ativo, perfis(nome, cpf)").eq("organizacao_id", org);
+    const { data, error } = await supabase.from("membros").select("usuario_id, papel, papeis_permitidos, ativo, perfis(nome, cpf)").eq("organizacao_id", org);
     if (error) return setErro("Não foi possível carregar os usuários.");
     setErro("");
     const lista = (data ?? []) as unknown as Membro[];
@@ -186,7 +201,7 @@ export default function Usuarios() {
           <li key={m.usuario_id} className={`flex items-center gap-3 rounded-2xl bg-white p-3 shadow ${m.ativo ? "" : "opacity-50"}`}>
             <div className="min-w-0 flex-1">
               <p className="font-bold text-marca-900">{m.perfis?.nome ?? "—"}{m.usuario_id === usuario.id && <span className="font-normal text-slate-500"> (você)</span>}</p>
-              <p className="text-sm text-slate-500">{mascararCpf(m.perfis?.cpf ?? "")} · {ROTULO_PAPEL[m.papel]}{m.ativo ? "" : " · desativado"}</p>
+              <p className="text-sm text-slate-500">{mascararCpf(m.perfis?.cpf ?? "")} · {perfisDe(m).map((p) => ROTULO_PAPEL[p]).join(" + ")}{m.ativo ? "" : " · desativado"}</p>
             </div>
             {m.usuario_id !== usuario.id && (
               <button onClick={() => setEditando(m)} className="rounded-lg bg-marca-100 px-3 py-2 text-sm font-bold text-marca-700">Alterar</button>

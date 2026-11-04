@@ -126,3 +126,15 @@ Deno.test("método GET -> 405; OPTIONS -> 204 com CORS da origem permitida", asy
   const estranho = await tratar(new Request("http://x", { method: "OPTIONS", headers: { Origin: "https://evil.example" } }), d);
   assert.equal(estranho.headers.get("Access-Control-Allow-Origin"), null);
 });
+
+Deno.test("vários perfis: grava a lista, o primeiro começa ativo; repetidos somem; perfil inválido na lista é recusado", async () => {
+  const { d, chamadas } = deps();
+  const r = await tratar(req({ ...valido, papel: undefined, papeis: ["conselho", "caixa", "conselho"] }), d);
+  assert.equal(r.status, 201);
+  const j = await r.json();
+  assert.equal(j.papel, "conselho");
+  assert.deepEqual(j.papeis, ["conselho", "caixa"]);
+  assert.ok(chamadas.includes("gravar:conselho"));
+  assert.equal((await tratar(req({ ...valido, papeis: ["caixa", "presidente"] }), deps().d)).status, 400);
+  assert.equal((await tratar(req({ ...valido, papeis: [] }), deps().d)).status, 400);
+});

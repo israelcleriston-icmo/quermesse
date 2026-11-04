@@ -276,19 +276,19 @@ select t.check('T16f produto novo aparece no cardápio público e na venda',
 -- T17 gestão de usuários e encerramento de evento
 \set adm '00000000-0000-0000-0000-0000000000d1'
 select t.after('T17a admin troca o perfil do caixa 2 para secretaria',
-  t.run(:'adm'::uuid, $q$select alterar_membro('00000000-0000-0000-0000-0000000000a2','10000000-0000-0000-0000-000000000001','secretaria',true)::text$q$),
+  t.run(:'adm'::uuid, $q$select alterar_membro('00000000-0000-0000-0000-0000000000a2','10000000-0000-0000-0000-000000000001',array['secretaria'],true)::text$q$),
   'OK:%', $x$select (select papel from membros where usuario_id='00000000-0000-0000-0000-0000000000a2')='secretaria' and exists(select 1 from logs_auditoria where acao='MEMBRO_ALTERADO')$x$);
 select t.check('T17b só admin altera membros',
-  t.run(:'sec'::uuid, $q$select alterar_membro('00000000-0000-0000-0000-0000000000a1','10000000-0000-0000-0000-000000000001','admin',true)::text$q$) like 'ERR:SEM_PERMISSAO%'
-  and t.run(:'con'::uuid, $q$select alterar_membro('00000000-0000-0000-0000-0000000000a1','10000000-0000-0000-0000-000000000001','admin',true)::text$q$) like 'ERR:SEM_PERMISSAO%');
+  t.run(:'sec'::uuid, $q$select alterar_membro('00000000-0000-0000-0000-0000000000a1','10000000-0000-0000-0000-000000000001',array['admin'],true)::text$q$) like 'ERR:SEM_PERMISSAO%'
+  and t.run(:'con'::uuid, $q$select alterar_membro('00000000-0000-0000-0000-0000000000a1','10000000-0000-0000-0000-000000000001',array['admin'],true)::text$q$) like 'ERR:SEM_PERMISSAO%');
 select t.check('T17c admin não rebaixa nem desativa a si mesmo',
-  t.run(:'adm'::uuid, $q$select alterar_membro('00000000-0000-0000-0000-0000000000d1','10000000-0000-0000-0000-000000000001','caixa',true)::text$q$) like 'ERR:NAO_PODE_ALTERAR_A_SI_MESMO%'
-  and t.run(:'adm'::uuid, $q$select alterar_membro('00000000-0000-0000-0000-0000000000d1','10000000-0000-0000-0000-000000000001','admin',false)::text$q$) like 'ERR:NAO_PODE_ALTERAR_A_SI_MESMO%');
+  t.run(:'adm'::uuid, $q$select alterar_membro('00000000-0000-0000-0000-0000000000d1','10000000-0000-0000-0000-000000000001',array['caixa'],true)::text$q$) like 'ERR:NAO_PODE_ALTERAR_A_SI_MESMO%'
+  and t.run(:'adm'::uuid, $q$select alterar_membro('00000000-0000-0000-0000-0000000000d1','10000000-0000-0000-0000-000000000001',array['admin'],false)::text$q$) like 'ERR:NAO_PODE_ALTERAR_A_SI_MESMO%');
 select t.check('T17d perfil inválido e usuário inexistente são recusados',
-  t.run(:'adm'::uuid, $q$select alterar_membro('00000000-0000-0000-0000-0000000000a1','10000000-0000-0000-0000-000000000001','presidente',true)::text$q$) like 'ERR:DADOS_INVALIDOS%'
-  and t.run(:'adm'::uuid, $q$select alterar_membro(gen_random_uuid(),'10000000-0000-0000-0000-000000000001','caixa',true)::text$q$) like 'ERR:USUARIO_INEXISTENTE%');
+  t.run(:'adm'::uuid, $q$select alterar_membro('00000000-0000-0000-0000-0000000000a1','10000000-0000-0000-0000-000000000001',array['presidente'],true)::text$q$) like 'ERR:DADOS_INVALIDOS%'
+  and t.run(:'adm'::uuid, $q$select alterar_membro(gen_random_uuid(),'10000000-0000-0000-0000-000000000001',array['caixa'],true)::text$q$) like 'ERR:USUARIO_INEXISTENTE%');
 select t.after('T17e usuário desativado perde o acesso na hora (RLS)',
-  t.run(:'adm'::uuid, $q$select alterar_membro('00000000-0000-0000-0000-0000000000a1','10000000-0000-0000-0000-000000000001','caixa',false)::text$q$),
+  t.run(:'adm'::uuid, $q$select alterar_membro('00000000-0000-0000-0000-0000000000a1','10000000-0000-0000-0000-000000000001',array['caixa'],false)::text$q$),
   'OK:%', $x$select true$x$);
 select t.check('T17f caixa desativado não vê eventos nem consegue vender',
   t.run(:'c1'::uuid, 'select count(*)::text from eventos') = 'OK:0'
@@ -322,6 +322,28 @@ insert into eventos(id,organizacao_id,codigo,nome,data_inicio,data_fim,chave_pix
 select t.after('T18d com p_copiar_estoque o estoque inicial é levado junto',
   t.run(:'adm'::uuid, $q$select copiar_cardapio('50000000-0000-0000-0000-000000000001','50000000-0000-0000-0000-000000000004', true)::text$q$),
   'OK:4', $x$select (select estoque_inicial from evento_produto where evento_id='50000000-0000-0000-0000-000000000004' and produto_id='30000000-0000-0000-0000-000000000001') = 3$x$);
+
+-- ---------- T19: vários perfis por pessoa --------------------------------
+select t.after('T19a admin libera dois perfis (secretaria e caixa) para a mesma pessoa; o ativo continua secretaria',
+  t.run(:'adm'::uuid, $q$select alterar_membro('00000000-0000-0000-0000-0000000000b1','10000000-0000-0000-0000-000000000001',array['secretaria','caixa'],true)::text$q$),
+  'OK:%', $x$select (select papel from membros where usuario_id='00000000-0000-0000-0000-0000000000b1')='secretaria'
+    and (select papeis_permitidos from membros where usuario_id='00000000-0000-0000-0000-0000000000b1') @> array['secretaria','caixa']::papel_usuario[]$x$);
+select t.after('T19b a pessoa troca para caixa (perfil permitido) e a troca fica no log',
+  t.run(:'sec'::uuid, $q$select trocar_papel('10000000-0000-0000-0000-000000000001','caixa')::text$q$),
+  'OK:%', $x$select (select papel from membros where usuario_id='00000000-0000-0000-0000-0000000000b1')='caixa'
+    and exists(select 1 from logs_auditoria where acao='PAPEL_TROCADO')$x$);
+select t.check('T19c como caixa, não faz o que é da secretaria (copiar cardápio)',
+  t.run(:'sec'::uuid, $q$select copiar_cardapio('50000000-0000-0000-0000-000000000001','50000000-0000-0000-0000-000000000002')::text$q$) like 'ERR:SEM_PERMISSAO%');
+select t.check('T19d perfil não liberado é recusado (admin/conselho) e usuário sem vínculo ativo também',
+  t.run(:'sec'::uuid, $q$select trocar_papel('10000000-0000-0000-0000-000000000001','admin')::text$q$) like 'ERR:PAPEL_NAO_PERMITIDO%'
+  and t.run(:'sec'::uuid, $q$select trocar_papel('10000000-0000-0000-0000-000000000001','presidente')::text$q$) like 'ERR:PAPEL_NAO_PERMITIDO%'
+  and t.run(:'c1'::uuid, $q$select trocar_papel('10000000-0000-0000-0000-000000000001','caixa')::text$q$) like 'ERR:SEM_PERMISSAO%');
+select t.after('T19e admin tira o perfil ativo da lista: o ativo passa para o primeiro informado',
+  t.run(:'adm'::uuid, $q$select alterar_membro('00000000-0000-0000-0000-0000000000b1','10000000-0000-0000-0000-000000000001',array['secretaria'],true)::text$q$),
+  'OK:%', $x$select (select papel from membros where usuario_id='00000000-0000-0000-0000-0000000000b1')='secretaria'$x$);
+select t.check('T19f admin não pode tirar o perfil admin de si mesmo',
+  t.run(:'adm'::uuid, $q$select alterar_membro('00000000-0000-0000-0000-0000000000d1','10000000-0000-0000-0000-000000000001',array['admin','caixa'],true)::text$q$) like 'OK:%'
+  and t.run(:'adm'::uuid, $q$select alterar_membro('00000000-0000-0000-0000-0000000000d1','10000000-0000-0000-0000-000000000001',array['caixa','conselho'],true)::text$q$) like 'ERR:NAO_PODE_ALTERAR_A_SI_MESMO%');
 
 select n, case when ok then 'PASS' else 'FAIL' end as resultado, nome from t.res where not ok order by n;
 select count(*) filter (where ok) as passou, count(*) filter (where not ok) as falhou from t.res;

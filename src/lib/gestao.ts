@@ -24,12 +24,12 @@ async function mensagemDaFuncao(error: unknown, padrao: string): Promise<string>
 }
 
 /** Cria o usuário pela Edge Function criar-usuario (só admin). */
-export async function criarUsuario(p: { organizacaoId: string; nome: string; cpf: string; senha: string; papel: Papel }) {
+export async function criarUsuario(p: { organizacaoId: string; nome: string; cpf: string; senha: string; papeis: Papel[] }) {
   const { data, error } = await supabase.functions.invoke("criar-usuario", {
-    body: { organizacao_id: p.organizacaoId, nome: p.nome, cpf: p.cpf, senha: p.senha, papel: p.papel },
+    body: { organizacao_id: p.organizacaoId, nome: p.nome, cpf: p.cpf, senha: p.senha, papeis: p.papeis },
   });
   if (error) throw new Error(await mensagemDaFuncao(error, "Não foi possível criar o usuário. Verifique a conexão e tente de novo."));
-  return data as { id: string; nome: string; papel: Papel };
+  return data as { id: string; nome: string; papel: Papel; papeis: Papel[] };
 }
 
 const MENSAGENS: Record<string, string> = {
@@ -39,9 +39,9 @@ const MENSAGENS: Record<string, string> = {
   DADOS_INVALIDOS: "Dados inválidos.",
 };
 
-export async function alterarMembro(p: { usuarioId: string; organizacaoId: string; papel: Papel; ativo: boolean }): Promise<void> {
+export async function alterarMembro(p: { usuarioId: string; organizacaoId: string; papeis: Papel[]; ativo: boolean }): Promise<void> {
   const { error } = await supabase.rpc("alterar_membro", {
-    p_usuario: p.usuarioId, p_organizacao: p.organizacaoId, p_papel: p.papel, p_ativo: p.ativo,
+    p_usuario: p.usuarioId, p_organizacao: p.organizacaoId, p_papeis: p.papeis, p_ativo: p.ativo,
   });
   if (error) {
     const codigo = Object.keys(MENSAGENS).find((c) => (error.message ?? "").includes(c));
