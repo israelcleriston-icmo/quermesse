@@ -3,7 +3,7 @@ import { paraCentavos } from "./dinheiro";
 import { urlImagem } from "./imagens";
 import type { PagamentoFinal } from "./pagamento";
 
-export interface EventoAtivo { id: string; codigo: string; nome: string; chavePix: string }
+export interface EventoAtivo { id: string; codigo: string; nome: string; chavePix: string; nomeRecebedor?: string | null; cidadeRecebedor?: string | null }
 export interface ItemCardapio {
   id: string; // evento_produto.id
   nome: string;
@@ -30,13 +30,14 @@ export async function carregarEventosAtivos(): Promise<EventoAtivo[]> {
   if (error) throw new Error(error.message);
   if (!data || data.length === 0) return [];
   const ids = [...new Set(data.map((e) => e.chave_pix_id))];
-  const chaves = await supabase.from("chaves_pix").select("id, chave").in("id", ids);
+  const chaves = await supabase.from("chaves_pix").select("id, chave, nome_recebedor, cidade_recebedor").in("id", ids);
   if (chaves.error) throw new Error("Chave Pix do evento não encontrada.");
-  const porId = new Map((chaves.data ?? []).map((c) => [c.id as string, c.chave as string]));
+  const porId = new Map((chaves.data ?? []).map((c) => [c.id as string, c]));
   return data.map((e) => {
-    const chave = porId.get(e.chave_pix_id);
-    if (!chave) throw new Error("Chave Pix do evento não encontrada.");
-    return { id: e.id, codigo: e.codigo, nome: e.nome, chavePix: chave };
+    const c = porId.get(e.chave_pix_id);
+    if (!c) throw new Error("Chave Pix do evento não encontrada.");
+    return { id: e.id, codigo: e.codigo, nome: e.nome, chavePix: c.chave as string,
+      nomeRecebedor: (c.nome_recebedor as string | null) ?? null, cidadeRecebedor: (c.cidade_recebedor as string | null) ?? null };
   });
 }
 

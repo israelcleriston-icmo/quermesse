@@ -11,7 +11,7 @@ const m = vi.hoisted(() => ({
 }));
 
 vi.mock("../lib/vendas", () => ({
-  carregarEventosAtivos: async () => [{ id: "ev1", codigo: "EVT1", nome: "Festa", chavePix: "123e4567-e12b-12d1-a456-426655440000" }],
+  carregarEventosAtivos: async () => [{ id: "ev1", codigo: "EVT1", nome: "Festa", chavePix: "123e4567-e12b-12d1-a456-426655440000", nomeRecebedor: "MITRA ARQUIDIOCESANA DE F", cidadeRecebedor: "Fortaleza" }],
   carregarCardapio: async () => [
     { id: "p1", nome: "Pastel", categoria: "Comidas", ordemCategoria: 1, valorCentavos: 700, estoque: 50, imagemUrl: null },
     { id: "r1", nome: "Rifa", categoria: "Rifas", ordemCategoria: 2, valorCentavos: 500, estoque: null, imagemUrl: null },
@@ -150,6 +150,7 @@ describe("PDV: pagamento em sequência", () => {
     fireEvent.click(botao("Copiar código Pix"));
     await screen.findByText("Copiado ✓");
     expect(writeText.mock.calls[0][0]).toMatch(/^000201/);          // é o BR Code
+    expect(writeText.mock.calls[0][0]).toContain("5925MITRA ARQUIDIOCESANA DE F6009Fortaleza");   // nome e cidade da chave
 
     // plano B: sem como copiar, mostra o código para copiar à mão
     Object.defineProperty(navigator, "clipboard", { value: undefined, configurable: true });

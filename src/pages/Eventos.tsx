@@ -1,11 +1,12 @@
 import { useCallback, useEffect, useState } from "react";
 import { Link, Navigate } from "react-router-dom";
+import CodigoPix from "../components/CodigoPix";
 import { dataBR } from "../lib/gestao";
 import { supabase } from "../lib/supabase";
 import { useAuth } from "../store/auth";
 
 interface Evento { id: string; codigo: string; nome: string; data_inicio: string; data_fim: string; status: "aberto" | "encerrado"; padrao: boolean; chave_pix_id: string }
-interface Chave { id: string; chave: string; descricao: string | null }
+interface Chave { id: string; chave: string; descricao: string | null; nome_recebedor: string | null; cidade_recebedor: string | null }
 
 const campo = "w-full rounded-lg border-2 border-marca-200 bg-white px-3 py-3 text-lg outline-none focus:border-marca-600";
 const resumo = (c: string) => (c.length > 14 ? `${c.slice(0, 8)}…${c.slice(-4)}` : c);
@@ -29,6 +30,8 @@ function FormEvento({ organizacaoId, evento, chaves, aoSalvar, aoFechar }: {
   const [chaveId, setChaveId] = useState(evento?.chave_pix_id ?? chaves[0]?.id ?? "nova");
   const [novaChave, setNovaChave] = useState("");
   const [descricao, setDescricao] = useState("");
+  const [nomeRec, setNomeRec] = useState("");
+  const [cidadeRec, setCidadeRec] = useState("");
   const [padrao, setPadrao] = useState(evento?.padrao ?? false);
   const [ocupado, setOcupado] = useState(false);
   const [erro, setErro] = useState("");
@@ -45,7 +48,7 @@ function FormEvento({ organizacaoId, evento, chaves, aoSalvar, aoFechar }: {
     try {
       let chave = chaveId;
       if (chave === "nova") {
-        const r = await supabase.from("chaves_pix").insert({ organizacao_id: organizacaoId, chave: novaChave.trim(), descricao: descricao.trim() || null }).select("id").single();
+        const r = await supabase.from("chaves_pix").insert({ organizacao_id: organizacaoId, chave: novaChave.trim(), descricao: descricao.trim() || null, nome_recebedor: nomeRec.trim() || null, cidade_recebedor: cidadeRec.trim() || null }).select("id").single();
         if (r.error || !r.data) throw new Error(traduzir(r.error ?? {}, "Não foi possível cadastrar a chave Pix."));
         chave = r.data.id;
       }
@@ -92,8 +95,11 @@ function FormEvento({ organizacaoId, evento, chaves, aoSalvar, aoFechar }: {
         </label>
         {chaveId === "nova" && (
           <div className="space-y-2 rounded-xl border-2 border-marca-200 bg-white p-3">
+            <CodigoPix aoLer={(d) => { setNovaChave(d.chave); setNomeRec((d.nome ?? "").slice(0, 25)); setCidadeRec((d.cidade ?? "").slice(0, 15)); }} />
             <input aria-label="Nova chave" value={novaChave} onChange={(e) => setNovaChave(e.target.value)} className={campo} placeholder="Chave Pix (aleatória)" />
             <input aria-label="Descrição da chave" value={descricao} onChange={(e) => setDescricao(e.target.value)} className={campo} placeholder="Descrição (opcional)" />
+            <input aria-label="Nome do recebedor" value={nomeRec} maxLength={25} onChange={(e) => setNomeRec(e.target.value)} className={campo} placeholder="Nome do recebedor (máx. 25; vazio = padrão)" />
+            <input aria-label="Cidade do recebedor" value={cidadeRec} maxLength={15} onChange={(e) => setCidadeRec(e.target.value)} className={campo} placeholder="Cidade (máx. 15; vazio = padrão)" />
           </div>
         )}
         <label className="flex items-center gap-2 font-semibold">
@@ -102,6 +108,41 @@ function FormEvento({ organizacaoId, evento, chaves, aoSalvar, aoFechar }: {
         {erro && <p role="alert" className="rounded-lg bg-red-50 p-3 font-medium text-red-700">{erro}</p>}
         <div className="mt-auto grid grid-cols-2 gap-3 pt-2">
           <button onClick={aoFechar} className="rounded-xl bg-white py-4 text-lg font-bold text-marca-700">Cancelar</button>
+          <button onClick={salvar} disabled={ocupado} className="rounded-xl bg-green-600 py-4 text-lg font-extrabold text-white disabled:opacity-40">Salvar</button>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+function AtualizarChave({ chave, aoConcluir, aoFechar }: { chave: Chave; aoConcluir: (t: string) => void; aoFechar: () => void }) {
+  const [nome, setNome] = useState(chave.nome_recebedor ?? "");
+  const [cidade, setCidade] = useState(chave.cidade_recebedor ?? "");
+  const [ocupado, setOcupado] = useState(false);
+  const [erro, setErro] = useState("");
+
+  async function salvar() {
+    if (ocupado) return;
+    setOcupado(true);
+    setErro("");
+    const { error } = await supabase.from("chaves_pix").update({ nome_recebedor: nome.trim() || null, cidade_recebedor: cidade.trim() || null }).eq("id", chave.id);
+    if (error) { setErro("Não foi possível salvar os dados da chave."); setOcupado(false); return; }
+    aoConcluir("Dados da chave atualizados ✓");
+  }
+
+  return (
+    <div className="fixed inset-0 z-[60] overflow-y-auto bg-black/60" role="dialog" aria-label="Atualizar dados da chave">
+      <div className="mx-auto mt-10 w-full max-w-md space-y-3 rounded-3xl bg-white p-5">
+        <h2 className="text-xl font-extrabold text-marca-900">Dados da chave {resumo(chave.chave)}</h2>
+        <CodigoPix aoLer={(d) => {
+          if (d.chave !== chave.chave) return setErro("Este código é de outra chave Pix. Use o código da chave que está sendo atualizada.");
+          setErro(""); setNome((d.nome ?? "").slice(0, 25)); setCidade((d.cidade ?? "").slice(0, 15));
+        }} />
+        <input aria-label="Nome do recebedor" value={nome} maxLength={25} onChange={(e) => setNome(e.target.value)} className={campo} placeholder="Nome do recebedor (vazio = padrão)" />
+        <input aria-label="Cidade do recebedor" value={cidade} maxLength={15} onChange={(e) => setCidade(e.target.value)} className={campo} placeholder="Cidade (vazio = padrão)" />
+        {erro && <p role="alert" className="rounded-lg bg-red-50 p-3 font-medium text-red-700">{erro}</p>}
+        <div className="grid grid-cols-2 gap-3">
+          <button onClick={aoFechar} className="rounded-xl bg-slate-200 py-4 text-lg font-bold">Cancelar</button>
           <button onClick={salvar} disabled={ocupado} className="rounded-xl bg-green-600 py-4 text-lg font-extrabold text-white disabled:opacity-40">Salvar</button>
         </div>
       </div>
@@ -173,12 +214,13 @@ export default function Eventos() {
   const [aviso, setAviso] = useState("");
   const [contagem, setContagem] = useState<Record<string, number>>({});
   const [novoCriado, setNovoCriado] = useState<{ id: string; nome: string } | null>(null);
+  const [editandoChave, setEditandoChave] = useState<Chave | null>(null);
   const [copiando, setCopiando] = useState<{ id: string; nome: string } | null>(null);
 
   const carregar = useCallback(async () => {
     const [e, c, ep] = await Promise.all([
       supabase.from("eventos").select("id, codigo, nome, data_inicio, data_fim, status, padrao, chave_pix_id").order("data_inicio", { ascending: false }),
-      supabase.from("chaves_pix").select("id, chave, descricao").eq("ativo", true).order("created_at"),
+      supabase.from("chaves_pix").select("id, chave, descricao, nome_recebedor, cidade_recebedor").eq("ativo", true).order("created_at"),
       supabase.from("evento_produto").select("evento_id").eq("ativo", true),
     ]);
     if (e.error || c.error || ep.error) return setErro("Não foi possível carregar os eventos.");
@@ -266,13 +308,24 @@ export default function Eventos() {
       <section className="rounded-2xl bg-white p-3 shadow">
         <h2 className="font-extrabold text-marca-900">Chaves Pix</h2>
         <ul className="mt-1 text-sm text-slate-700">
-          {chaves.map((c) => <li key={c.id}>{c.descricao ? `${c.descricao} · ` : ""}{resumo(c.chave)}</li>)}
+          {chaves.map((c) => (
+            <li key={c.id} className="flex items-center justify-between gap-2 py-1">
+              <span className="min-w-0">{c.descricao ? `${c.descricao} · ` : ""}{resumo(c.chave)}
+                <span className="block text-xs text-slate-500">{c.nome_recebedor ? `${c.nome_recebedor} · ${c.cidade_recebedor ?? "cidade padrão"}` : "Nome e cidade padrão"}</span>
+              </span>
+              <button onClick={() => setEditandoChave(c)} className="shrink-0 rounded-lg bg-marca-100 px-3 py-2 text-xs font-bold text-marca-700">Atualizar dados</button>
+            </li>
+          ))}
           {chaves.length === 0 && <li>Nenhuma chave. Cadastre ao criar o evento.</li>}
         </ul>
       </section>
 
       {form && <FormEvento key={form.evento?.id ?? "novo"} organizacaoId={usuario.organizacaoId} evento={form.evento} chaves={chaves}
         aoFechar={() => setForm(null)} aoSalvar={(t, criado) => { setForm(null); if (criado) setNovoCriado(criado); avisar(t); }} />}
+
+      {editandoChave && (
+        <AtualizarChave chave={editandoChave} aoFechar={() => setEditandoChave(null)} aoConcluir={(t) => { setEditandoChave(null); avisar(t); }} />
+      )}
 
       {copiando && (
         <CopiarCardapio destino={copiando} origens={eventos.filter((e) => e.id !== copiando.id)} contagem={contagem}
