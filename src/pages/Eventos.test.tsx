@@ -6,6 +6,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 type Reg = { tabela: string; linha: Record<string, unknown> };
 const m = vi.hoisted(() => ({ inserts: [] as Reg[], updates: [] as Reg[], erroInsert: null as null | { message: string }, rpc: vi.fn() }));
 
+vi.mock("qrcode", () => ({ default: { toDataURL: async () => "data:image/png;base64,AAAA" } }));
 vi.mock("../lib/supabase", () => {
   const dados: Record<string, unknown[]> = {
     eventos: [
@@ -150,6 +151,14 @@ describe("eventos e chaves Pix (Conselho/admin)", () => {
     fireEvent.click(screen.getByText("Salvar"));
     await screen.findByText("Dados da chave atualizados ✓");
     expect(m.updates[0]).toEqual({ tabela: "chaves_pix", linha: { nome_recebedor: "MITRA ARQUIDIOCESANA DE F", cidade_recebedor: "Fortaleza" } });
+  });
+
+  it("QR do cardápio: abre o cartaz com o link público do evento", async () => {
+    montar();
+    fireEvent.click(await screen.findByText("QR do cardápio (fura-fila)"));
+    await screen.findByAltText("QR do cardápio");
+    expect(screen.getByText(/#\/cardapio\?e=ev1/)).toBeTruthy();
+    expect(screen.getByText("Baixar imagem").getAttribute("download")).toBe("cardapio-EVT1.png");
   });
 
   it("valida o término antes do início e o código; mensagem amigável para código repetido", async () => {

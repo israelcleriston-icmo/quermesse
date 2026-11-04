@@ -6,6 +6,7 @@ import type { PagamentoFinal } from "./pagamento";
 export interface EventoAtivo { id: string; codigo: string; nome: string; chavePix: string; nomeRecebedor?: string | null; cidadeRecebedor?: string | null }
 export interface ItemCardapio {
   id: string; // evento_produto.id
+  seq: number; // número curto do item no evento (vai no QR do fura-fila)
   nome: string;
   categoria: string;
   ordemCategoria: number;
@@ -42,18 +43,19 @@ export async function carregarEventosAtivos(): Promise<EventoAtivo[]> {
 }
 
 interface Linha {
-  id: string; valor: string | number; estoque_atual: number | null;
+  id: string; seq: number; valor: string | number; estoque_atual: number | null;
   produtos: { nome: string; imagem_path: string | null; categorias: { nome: string; ordem: number } | null };
 }
 
 export async function carregarCardapio(eventoId: string): Promise<ItemCardapio[]> {
   const { data, error } = await supabase
     .from("evento_produto")
-    .select("id, valor, estoque_atual, produtos!inner(nome, imagem_path, ativo, categorias(nome, ordem))")
+    .select("id, seq, valor, estoque_atual, produtos!inner(nome, imagem_path, ativo, categorias(nome, ordem))")
     .eq("evento_id", eventoId).eq("ativo", true).eq("produtos.ativo", true);
   if (error) throw new Error(error.message);
   return ((data ?? []) as unknown as Linha[]).map((r) => ({
     id: r.id,
+    seq: Number(r.seq),
     nome: r.produtos.nome,
     categoria: r.produtos.categorias?.nome ?? "Outros",
     ordemCategoria: r.produtos.categorias?.ordem ?? 99,

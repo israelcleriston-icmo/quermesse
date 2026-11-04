@@ -1,5 +1,7 @@
 import { useCallback, useEffect, useState } from "react";
+import { copiarTexto } from "../lib/copiar";
 import { Link, Navigate } from "react-router-dom";
+import QRCode from "qrcode";
 import CodigoPix from "../components/CodigoPix";
 import { dataBR } from "../lib/gestao";
 import { supabase } from "../lib/supabase";
@@ -150,6 +152,29 @@ function AtualizarChave({ chave, aoConcluir, aoFechar }: { chave: Chave; aoConcl
   );
 }
 
+/** QR do cartaz: leva o cliente ao cardápio público do evento (fura-fila). */
+function CartazCardapio({ evento, aoFechar }: { evento: Evento; aoFechar: () => void }) {
+  const link = `${window.location.origin}${window.location.pathname}#/cardapio?e=${evento.id}`;
+  const [imagem, setImagem] = useState("");
+  const [copiado, setCopiado] = useState(false);
+  useEffect(() => { void QRCode.toDataURL(link, { errorCorrectionLevel: "M", margin: 4, width: 800 }).then(setImagem); }, [link]);
+  return (
+    <div className="fixed inset-0 z-[60] overflow-y-auto bg-black/60" role="dialog" aria-label="QR do cardápio">
+      <div className="mx-auto mt-6 w-full max-w-md space-y-3 rounded-3xl bg-white p-5 text-center">
+        <h2 className="text-xl font-extrabold text-marca-900">QR do cardápio · {evento.nome}</h2>
+        <p className="text-sm text-slate-600">Imprima e cole nas barracas e na fila. O cliente lê, escolhe e mostra o pedido ao caixa.</p>
+        {imagem && <img src={imagem} alt="QR do cardápio" className="mx-auto w-full max-w-[320px]" />}
+        <p className="break-all rounded-lg bg-slate-100 p-2 font-mono text-xs">{link}</p>
+        <div className="grid grid-cols-2 gap-2">
+          <button onClick={async () => { setCopiado(await copiarTexto(link)); }} className="rounded-xl bg-marca-100 py-3 font-bold text-marca-700">{copiado ? "Link copiado ✓" : "Copiar link"}</button>
+          <a href={imagem} download={`cardapio-${evento.codigo}.png`} className="rounded-xl bg-marca-600 py-3 font-bold text-white">Baixar imagem</a>
+        </div>
+        <button onClick={aoFechar} className="w-full rounded-xl bg-slate-200 py-3 font-bold">Fechar</button>
+      </div>
+    </div>
+  );
+}
+
 const MSG_COPIA: Record<string, string> = {
   SEM_PERMISSAO: "Você não tem permissão para copiar o cardápio.",
   EVENTOS_IGUAIS: "Escolha um evento diferente como origem.",
@@ -214,6 +239,7 @@ export default function Eventos() {
   const [aviso, setAviso] = useState("");
   const [contagem, setContagem] = useState<Record<string, number>>({});
   const [novoCriado, setNovoCriado] = useState<{ id: string; nome: string } | null>(null);
+  const [cartaz, setCartaz] = useState<Evento | null>(null);
   const [editandoChave, setEditandoChave] = useState<Chave | null>(null);
   const [copiando, setCopiando] = useState<{ id: string; nome: string } | null>(null);
 
@@ -296,6 +322,9 @@ export default function Eventos() {
                   ? <button onClick={() => setEncerrando(ev)} className="rounded-lg border-2 border-red-600 py-2 font-bold text-red-700">Encerrar</button>
                   : <button onClick={() => void mudarStatus(ev, "aberto")} className="rounded-lg bg-marca-600 py-2 font-bold text-white">Reabrir</button>}
               </div>
+              {ev.status === "aberto" && (
+                <button onClick={() => setCartaz(ev)} className="mt-2 w-full rounded-lg bg-marca-100 py-2 font-bold text-marca-700">QR do cardápio (fura-fila)</button>
+              )}
               {ev.status === "aberto" && eventos.length > 1 && (
                 <button onClick={() => setCopiando({ id: ev.id, nome: ev.nome })} className="mt-2 w-full rounded-lg bg-amber-100 py-2 font-bold text-amber-900">Copiar cardápio de outro evento</button>
               )}
@@ -322,6 +351,8 @@ export default function Eventos() {
 
       {form && <FormEvento key={form.evento?.id ?? "novo"} organizacaoId={usuario.organizacaoId} evento={form.evento} chaves={chaves}
         aoFechar={() => setForm(null)} aoSalvar={(t, criado) => { setForm(null); if (criado) setNovoCriado(criado); avisar(t); }} />}
+
+      {cartaz && <CartazCardapio evento={cartaz} aoFechar={() => setCartaz(null)} />}
 
       {editandoChave && (
         <AtualizarChave chave={editandoChave} aoFechar={() => setEditandoChave(null)} aoConcluir={(t) => { setEditandoChave(null); avisar(t); }} />
