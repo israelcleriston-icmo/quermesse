@@ -36,6 +36,7 @@ function CartaoTurno({ t, aoMudar, aoErro }: { t: TurnoConferencia; aoMudar: () 
       <dl className="grid grid-cols-2 gap-x-3 gap-y-1 text-sm">
         <dt>Fundo de troco</dt><dd className="text-right font-semibold">{c(t.fundo_inicial)}</dd>
         <dt>Vendas em dinheiro</dt><dd className="text-right font-semibold">{c(t.vendas_dinheiro)}</dd>
+        {(t.devolucoes_dinheiro ?? 0) > 0 && (<><dt>Devoluções em dinheiro</dt><dd className="text-right font-semibold">− {c(t.devolucoes_dinheiro ?? 0)}</dd></>)}
         <dt>Sangrias</dt><dd className="text-right font-semibold">− {c(t.sangrias_total)}</dd>
         <dt className="font-bold">Esperado na gaveta</dt><dd className="text-right font-bold">{t.esperado === null ? "—" : c(t.esperado)}</dd>
         <dt className="font-bold">Contado pelo caixa</dt><dd className="text-right font-bold">{t.contado === null ? "—" : c(t.contado)}</dd>

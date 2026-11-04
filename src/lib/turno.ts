@@ -4,7 +4,7 @@ export interface Sangria { id: string; valor: number; motivo: string | null; reg
 export interface TurnoAberto { id: string; eventoId: string; abertoEm: string; fundoCentavos: number; sangrias: Sangria[] }
 export interface TurnoConferencia {
   turno_id: string; caixa: string; proprio: boolean; aberto_em: string; fechado_em: string | null;
-  fundo_inicial: number; vendas_dinheiro: number; sangrias_total: number; sangrias_pendentes: number;
+  fundo_inicial: number; vendas_dinheiro: number; devolucoes_dinheiro?: number; sangrias_total: number; sangrias_pendentes: number;
   sangrias: Sangria[]; outras_formas: Record<string, number>;
   contado: number | null; obs_fechamento: string | null; esperado: number | null; diferenca: number | null;
   conferido_em: string | null; obs_conferencia: string | null;
