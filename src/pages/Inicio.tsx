@@ -33,14 +33,13 @@ export default function Inicio() {
         </div>
       </header>
       {(usuario.papeis?.length ?? 0) > 1 && (
-        <section aria-label="Trocar perfil" className="rounded-2xl bg-white p-4 shadow">
-          <p className="mb-2 text-sm font-semibold text-slate-600">Você está como <strong>{ROTULO[usuario.papel]}</strong>. Trocar perfil:</p>
-          <div className="flex flex-wrap gap-2">
-            {(usuario.papeis ?? []).map((p) => (
-              <button key={p} onClick={() => void aoTrocar(p)} aria-pressed={p === usuario.papel}
-                className={`rounded-full px-4 py-2 font-bold ${p === usuario.papel ? "bg-marca-600 text-white" : "bg-marca-100 text-marca-700 active:bg-marca-200"}`}>{ROTULO[p]}</button>
-            ))}
-          </div>
+        <section className="rounded-2xl bg-white p-4 shadow">
+          <label className="block text-sm font-semibold text-slate-600">Você está como
+            <select aria-label="Trocar perfil" value={usuario.papel} onChange={(e) => void aoTrocar(e.target.value as Papel)}
+              className="mt-1 w-full rounded-lg border-2 border-marca-200 bg-white px-3 py-3 text-lg font-bold text-marca-900 outline-none focus:border-marca-600">
+              {(usuario.papeis ?? []).map((p) => <option key={p} value={p}>{ROTULO[p]}</option>)}
+            </select>
+          </label>
           {erroTroca && <p role="alert" className="mt-2 rounded-lg bg-red-50 p-2 text-sm font-medium text-red-700">{erroTroca}</p>}
         </section>
       )}
@@ -48,6 +47,12 @@ export default function Inicio() {
         <div className="flex flex-col gap-3">
           {(usuario.papel === "caixa" || usuario.papel === "secretaria") && (
             <Link to="/pdv" className="block rounded-xl bg-marca-600 py-5 text-center text-xl font-extrabold text-white active:bg-marca-700">Abrir caixa</Link>
+          )}
+          {(usuario.papel === "caixa" || usuario.papel === "secretaria") && (
+            <Link to="/turno" className="block rounded-xl bg-marca-100 py-5 text-center text-xl font-extrabold text-marca-700 active:bg-marca-200">Meu turno de caixa</Link>
+          )}
+          {(usuario.papel === "conselho" || usuario.papel === "admin") && (
+            <Link to="/conferencia" className="block rounded-xl bg-marca-100 py-5 text-center text-xl font-extrabold text-marca-700 active:bg-marca-200">Conferência dos caixas</Link>
           )}
           {(usuario.papel === "secretaria" || usuario.papel === "conselho" || usuario.papel === "admin") && (
             <Link to="/produtos" className="block rounded-xl bg-marca-100 py-5 text-center text-xl font-extrabold text-marca-700 active:bg-marca-200">Produtos</Link>

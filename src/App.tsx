@@ -9,6 +9,8 @@ import CardapioPublico from "./pages/Cardapio";
 import Eventos from "./pages/Eventos";
 import Produtos from "./pages/Produtos";
 import Usuarios from "./pages/Usuarios";
+import Turno from "./pages/Turno";
+import Conferencia from "./pages/Conferencia";
 import TrocarSenha from "./pages/TrocarSenha";
 import { iniciarVigia } from "./lib/inatividade";
 import { useAuth } from "./store/auth";
@@ -30,6 +32,8 @@ export default function App() {
         <Route path="/pdv" element={<Protegida><Pdv /></Protegida>} />
         <Route path="/produtos" element={<Protegida><Produtos /></Protegida>} />
         <Route path="/eventos" element={<Protegida><Eventos /></Protegida>} />
+        <Route path="/turno" element={<Protegida><Turno /></Protegida>} />
+        <Route path="/conferencia" element={<Protegida><Conferencia /></Protegida>} />
         <Route path="/usuarios" element={<Protegida><Usuarios /></Protegida>} />
         <Route path="*" element={<Navigate to="/" replace />} />
       </Routes>
