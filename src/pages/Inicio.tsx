@@ -60,6 +60,9 @@ export default function Inicio() {
           {(usuario.papel === "conselho" || usuario.papel === "admin") && (
             <Link to="/relatorios" className="block rounded-xl bg-marca-100 py-5 text-center text-xl font-extrabold text-marca-700 active:bg-marca-200">Relatórios</Link>
           )}
+          {(usuario.papel === "conselho" || usuario.papel === "admin") && (
+            <Link to="/pix" className="block rounded-xl bg-marca-100 py-5 text-center text-xl font-extrabold text-marca-700 active:bg-marca-200">Conferir Pix (fotos e extrato)</Link>
+          )}
           {(usuario.papel === "secretaria" || usuario.papel === "conselho" || usuario.papel === "admin") && (
             <Link to="/produtos" className="block rounded-xl bg-marca-100 py-5 text-center text-xl font-extrabold text-marca-700 active:bg-marca-200">Produtos</Link>
           )}
