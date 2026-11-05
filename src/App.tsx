@@ -13,6 +13,7 @@ import Turno from "./pages/Turno";
 import Conferencia from "./pages/Conferencia";
 import Vendas from "./pages/Vendas";
 import Relatorios from "./pages/Relatorios";
+import ConferenciaPix from "./pages/ConferenciaPix";
 import TrocarSenha from "./pages/TrocarSenha";
 import { iniciarVigia } from "./lib/inatividade";
 import { useAuth } from "./store/auth";
@@ -38,6 +39,7 @@ export default function App() {
         <Route path="/conferencia" element={<Protegida><Conferencia /></Protegida>} />
         <Route path="/vendas" element={<Protegida><Vendas /></Protegida>} />
         <Route path="/relatorios" element={<Protegida><Relatorios /></Protegida>} />
+        <Route path="/pix" element={<Protegida><ConferenciaPix /></Protegida>} />
         <Route path="/usuarios" element={<Protegida><Usuarios /></Protegida>} />
         <Route path="*" element={<Navigate to="/" replace />} />
       </Routes>

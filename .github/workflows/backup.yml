@@ -1,0 +1,54 @@
+# Backup diário do banco (Supabase), criptografado, guardado como artefato por 30 dias.
+# Segredos e passo a passo: docs/BACKUP.md
+name: Backup do banco
+
+on:
+  schedule:
+    - cron: "30 5 * * *"        # 02:30 no horário de Brasília
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  backup:
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    strategy:
+      fail-fast: false
+      matrix:
+        ambiente: [treinamento, producao]
+    env:
+      URL_BANCO: ${{ matrix.ambiente == 'producao' && secrets.BACKUP_DB_URL_PRODUCAO || secrets.BACKUP_DB_URL_TREINAMENTO }}
+      BACKUP_SENHA: ${{ secrets.BACKUP_SENHA }}
+    steps:
+      - name: Conferir configuração
+        id: cfg
+        run: |
+          if [ -z "$URL_BANCO" ] || [ -z "$BACKUP_SENHA" ]; then
+            echo "::notice::Backup de ${{ matrix.ambiente }} não configurado (faltam segredos). Veja docs/BACKUP.md."
+            echo "pronto=nao" >> "$GITHUB_OUTPUT"
+          else
+            echo "pronto=sim" >> "$GITHUB_OUTPUT"
+          fi
+      - uses: actions/checkout@v4
+        if: steps.cfg.outputs.pronto == 'sim'
+      - name: Instalar cliente PostgreSQL 17
+        if: steps.cfg.outputs.pronto == 'sim'
+        run: |
+          sudo /usr/share/postgresql-common/pgdg/apt.postgresql.org.sh -y
+          sudo apt-get install -y postgresql-client-17
+          /usr/lib/postgresql/17/bin/pg_dump --version
+          echo "/usr/lib/postgresql/17/bin" >> "$GITHUB_PATH"
+      - name: Gerar backup criptografado
+        if: steps.cfg.outputs.pronto == 'sim'
+        run: |
+          DATA="$(date -u +%Y-%m-%d_%H%M)"
+          bash scripts/backup.sh "$URL_BANCO" backup "quermesse-${{ matrix.ambiente }}-$DATA"
+      - uses: actions/upload-artifact@v4
+        if: steps.cfg.outputs.pronto == 'sim'
+        with:
+          name: backup-${{ matrix.ambiente }}
+          path: backup/
+          retention-days: 30
+          if-no-files-found: error

@@ -496,5 +496,25 @@ select t.check('T22d por produto líquido: Pastel 1 unidade e 10,00; por caixa e
       and (j->'turnos'->>'total')::int = 1
      from (select substring(t.run(:'con'::uuid, format($q$select relatorio_evento('%s')::text$q$, :'ev6')) from 4)::jsonb as j) x));
 
+-- ---------- T23: conferência do Pix ---------------------------------------------
+select t.check('T23a existe pagamento Pix para conferir (massa dos testes de Pix)',
+  (select count(*) from vendas_pagamentos where forma='pix') > 0);
+select t.check('T23b caixa não confere; dinheiro não é Pix',
+  t.run(:'a3'::uuid, format($q$select conferir_pagamento_pix('%s')::text$q$, (select id from vendas_pagamentos where forma='pix' limit 1))) like 'ERR:SEM_PERMISSAO%'
+  and t.run(:'con'::uuid, format($q$select conferir_pagamento_pix('%s')::text$q$, (select id from vendas_pagamentos where forma='dinheiro' limit 1))) like 'ERR:DADOS_INVALIDOS%'
+  and t.run(:'con'::uuid, $q$select conferir_pagamento_pix(gen_random_uuid())::text$q$) like 'ERR:PAGAMENTO_INEXISTENTE%');
+select t.after('T23c Conselho confere o Pix e o log registra; desmarcar limpa',
+  t.run(:'con'::uuid, format($q$select conferir_pagamento_pix('%s')::text$q$, (select id from vendas_pagamentos where forma='pix' order by id limit 1))),
+  'OK:%', $x$select (select conferido_por from vendas_pagamentos where forma='pix' order by id limit 1) = '00000000-0000-0000-0000-0000000000c1'
+    and exists(select 1 from logs_auditoria where acao='PIX_CONFERIDO')$x$);
+select t.after('T23d desmarcar',
+  t.run(:'con'::uuid, format($q$select conferir_pagamento_pix('%s', false)::text$q$, (select id from vendas_pagamentos where forma='pix' order by id limit 1))),
+  'OK:%', $x$select (select conferido_em from vendas_pagamentos where forma='pix' order by id limit 1) is null
+    and exists(select 1 from logs_auditoria where acao='PIX_DESMARCADO')$x$);
+update vendas set vendedor_id = '00000000-0000-0000-0000-0000000000a4'
+ where id = (select venda_id from vendas_pagamentos where forma='pix' order by id limit 1);
+select t.check('T23e pessoa com perfil Conselho não confere Pix de venda feita por ela',
+  t.run(:'a4'::uuid, format($q$select conferir_pagamento_pix('%s')::text$q$, (select id from vendas_pagamentos where forma='pix' order by id limit 1))) like 'ERR:PROPRIA_VENDA%');
+
 select n, case when ok then 'PASS' else 'FAIL' end as resultado, nome from t.res where not ok order by n;
 select count(*) filter (where ok) as passou, count(*) filter (where not ok) as falhou from t.res;
