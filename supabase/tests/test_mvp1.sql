@@ -479,5 +479,22 @@ select t.check('T21l Conselho devolve esse dinheiro; a3 fecha contando 10,00; es
   and (select (j @> format('[{"caixa":"Caixa 3","esperado":10,"contado":10,"diferenca":0,"devolucoes_dinheiro":10,"vendas_dinheiro":10}]')::jsonb)
          from (select substring(t.run(:'con'::uuid, format($q$select conferencia_turnos('%s')::text$q$, :'ev6')) from 4)::jsonb as j) x));
 
+-- ---------- T22: relatório do evento (líquido, com anulações) ------------------
+select t.check('T22a caixa não vê o relatório; evento inexistente é recusado',
+  t.run(:'a3'::uuid, format($q$select relatorio_evento('%s')::text$q$, :'ev6')) like 'ERR:SEM_PERMISSAO%'
+  and t.run(:'con'::uuid, $q$select relatorio_evento(gen_random_uuid())::text$q$) like 'ERR:EVENTO_INEXISTENTE%');
+select t.check('T22b resumo do EVT6: 1 venda válida, 2 anuladas, bruto 50, devolvido 40, líquido 10',
+  (select j->'resumo' @> '{"vendas":1,"anuladas":2,"bruto":50,"devolvido":40,"liquido":10}'::jsonb
+     from (select substring(t.run(:'con'::uuid, format($q$select relatorio_evento('%s')::text$q$, :'ev6')) from 4)::jsonb as j) x));
+select t.check('T22c por forma: débito 20 vendido/10 devolvido/10 líquido; dinheiro 30/30/0',
+  (select j->'por_forma' @> '[{"forma":"debito","vendido":20,"devolvido":10,"liquido":10},{"forma":"dinheiro","vendido":30,"devolvido":30,"liquido":0}]'::jsonb
+     from (select substring(t.run(:'con'::uuid, format($q$select relatorio_evento('%s')::text$q$, :'ev6')) from 4)::jsonb as j) x));
+select t.check('T22d por produto líquido: Pastel 1 unidade e 10,00; por caixa e anulações aparecem; sangrias e turnos contados',
+  (select j->'por_produto' = '[{"nome":"Pastel","quantidade":1,"faturamento":10.00}]'::jsonb
+      and j->'por_caixa' @> '[{"caixa":"Caixa e Conselho","vendas":1,"liquido":10}]'::jsonb
+      and jsonb_array_length(j->'anulacoes') = 3
+      and (j->'turnos'->>'total')::int = 1
+     from (select substring(t.run(:'con'::uuid, format($q$select relatorio_evento('%s')::text$q$, :'ev6')) from 4)::jsonb as j) x));
+
 select n, case when ok then 'PASS' else 'FAIL' end as resultado, nome from t.res where not ok order by n;
 select count(*) filter (where ok) as passou, count(*) filter (where not ok) as falhou from t.res;
