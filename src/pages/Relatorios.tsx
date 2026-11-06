@@ -3,10 +3,11 @@ import { useEffect, useState } from "react";
 import { Link, Navigate } from "react-router-dom";
 import { brl } from "../lib/dinheiro";
 import { baixarCsv, carregarRelatorio, ROTULO_FORMA, type Relatorio } from "../lib/relatorio";
+import { escolherEventoPadrao, lembrarEvento, rotuloEvento, type EventoSel } from "../lib/eventoPadrao";
 import { supabase } from "../lib/supabase";
 import { useAuth } from "../store/auth";
 
-interface Ev { id: string; nome: string }
+type Ev = EventoSel;
 const c = (v: number) => brl(Math.round(Number(v) * 100));
 const dataBR = (iso: string) => iso.slice(0, 10).split("-").reverse().join("/");
 
@@ -27,12 +28,12 @@ export default function Relatorios() {
   useEffect(() => {
     let vivo = true;
     void (async () => {
-      const r = await supabase.from("eventos").select("id, nome").order("data_inicio", { ascending: false });
+      const r = await supabase.from("eventos").select("id, nome, data_inicio, data_fim, status").order("data_inicio", { ascending: false });
       if (!vivo) return;
       if (r.error) return setErro("Não foi possível carregar os eventos.");
-      const lista = (r.data ?? []) as Ev[];
+      const lista = (r.data ?? []) as EventoSel[];
       setEventos(lista);
-      setEventoId(lista[0]?.id ?? "");
+      setEventoId(escolherEventoPadrao(lista));
     })();
     return () => { vivo = false; };
   }, []);
@@ -45,6 +46,8 @@ export default function Relatorios() {
     return () => { vivo = false; };
   }, [eventoId]);
 
+  useEffect(() => { if (eventoId) lembrarEvento(eventoId); }, [eventoId]);
+
   if (!usuario) return null;
   if (usuario.papel !== "conselho" && usuario.papel !== "admin") return <Navigate to="/" replace />;
 
@@ -56,7 +59,7 @@ export default function Relatorios() {
       </header>
       <select aria-label="Evento" value={eventoId} onChange={(e) => setEventoId(e.target.value)}
         className="w-full rounded-lg border-2 border-marca-200 bg-white px-3 py-3 text-lg outline-none focus:border-marca-600 print:hidden">
-        {eventos.map((e) => <option key={e.id} value={e.id}>{e.nome}</option>)}
+        {eventos.map((e) => <option key={e.id} value={e.id}>{rotuloEvento(e)}</option>)}
       </select>
       {erro && <p role="alert" className="rounded-lg bg-red-50 p-3 font-medium text-red-700">{erro}</p>}
       {rel === undefined && !erro && <p className="p-6 text-center text-marca-700">Carregando…</p>}

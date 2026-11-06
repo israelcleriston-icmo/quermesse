@@ -55,4 +55,15 @@ describe("conferência dos caixas (Conselho)", () => {
     montar();
     expect(screen.queryByText("Conferência dos caixas")).toBeNull();
   });
+  it("gera o código da sangria para um turno aberto e mostra os 6 dígitos", async () => {
+    m.rpc.mockImplementation(async (nome: string) => nome === "conferencia_turnos"
+      ? { data: [turno({ fechado_em: null, esperado: null, diferenca: null, contado: null })], error: null }
+      : nome === "gerar_codigo_sangria" ? { data: { codigo: "482915", expira_em: "2026-11-05T12:10:00Z", valor: 100 }, error: null } : { error: null });
+    montar();
+    await screen.findByText("Maria Caixa");
+    fireEvent.change(screen.getByLabelText("Valor da sangria a receber"), { target: { value: "100,00" } });
+    fireEvent.click(screen.getByText("Gerar código"));
+    await waitFor(() => expect(m.rpc).toHaveBeenCalledWith("gerar_codigo_sangria", { p_turno: "t1", p_valor: 100 }));
+    expect((await screen.findByLabelText("Código gerado")).textContent).toBe("482915");
+  });
 });

@@ -2,11 +2,13 @@
 import { useCallback, useEffect, useState } from "react";
 import { Link, Navigate } from "react-router-dom";
 import { brl } from "../lib/dinheiro";
-import { conferenciaDoEvento, conferirTurno, confirmarSangria, type TurnoConferencia } from "../lib/turno";
+import { lerReais } from "../lib/pagamento";
+import { conferenciaDoEvento, conferirTurno, confirmarSangria, gerarCodigoSangria, type CodigoSangria, type TurnoConferencia } from "../lib/turno";
+import { escolherEventoPadrao, lembrarEvento, rotuloEvento, type EventoSel } from "../lib/eventoPadrao";
 import { supabase } from "../lib/supabase";
 import { useAuth } from "../store/auth";
 
-interface Ev { id: string; nome: string }
+type Ev = EventoSel;
 const c = (v: number) => brl(Math.round(v * 100));
 const hora = (iso: string) => new Date(iso).toLocaleString("pt-BR", { day: "2-digit", month: "2-digit", hour: "2-digit", minute: "2-digit" });
 const ROTULO_FORMA: Record<string, string> = { pix: "Pix", credito: "Crédito", debito: "Débito" };
@@ -14,12 +16,19 @@ const ROTULO_FORMA: Record<string, string> = { pix: "Pix", credito: "Crédito", 
 function CartaoTurno({ t, aoMudar, aoErro }: { t: TurnoConferencia; aoMudar: () => void; aoErro: (m: string) => void }) {
   const [obs, setObs] = useState("");
   const [ocupado, setOcupado] = useState(false);
-  async function agir(fn: () => Promise<void>) {
+  async function agir(fn: () => Promise<void>, recarregar = true) {
     if (ocupado) return;
     setOcupado(true);
-    try { await fn(); aoMudar(); } catch (e) { aoErro(e instanceof Error ? e.message : "Erro."); }
+    try { await fn(); if (recarregar) aoMudar(); } catch (e) { aoErro(e instanceof Error ? e.message : "Erro."); }
     finally { setOcupado(false); }
   }
+  const [valorCod, setValorCod] = useState("");
+  const [cod, setCod] = useState<CodigoSangria | null>(null);
+  const gerar = () => {
+    const v = lerReais(valorCod);
+    if (!v) return aoErro("Digite o valor que o caixa vai entregar. Exemplo: 100,00");
+    void agir(async () => { setCod(await gerarCodigoSangria(t.turno_id, v)); }, false);
+  };
   const dif = t.diferenca;
   const corDif = dif === null ? "" : dif === 0 ? "text-green-700" : "text-red-700";
   return (
@@ -60,6 +69,22 @@ function CartaoTurno({ t, aoMudar, aoErro }: { t: TurnoConferencia; aoMudar: () 
           ))}
         </ul>
       )}
+      {!t.fechado_em && !t.proprio && (
+        <div className="space-y-2 rounded-xl bg-marca-50 p-3">
+          <p className="text-sm font-bold text-marca-900">Receber sangria</p>
+          <div className="flex gap-2">
+            <input aria-label="Valor da sangria a receber" inputMode="decimal" placeholder="Valor (R$)" value={valorCod} onChange={(e) => { setValorCod(e.target.value); setCod(null); }} className="min-w-0 flex-1 rounded-lg border-2 border-marca-200 px-3 py-2 outline-none focus:border-marca-600" />
+            <button disabled={ocupado} onClick={gerar} className="rounded-lg bg-marca-600 px-3 py-2 font-bold text-white disabled:opacity-40">Gerar código</button>
+          </div>
+          {cod && (
+            <div role="status" className="rounded-lg bg-white p-3 text-center">
+              <p className="text-sm text-slate-600">Passe este código ao caixa (vale 10 minutos, {c(cod.valor)}):</p>
+              <p aria-label="Código gerado" className="text-4xl font-extrabold tracking-[0.3em] text-marca-900">{cod.codigo}</p>
+              <p className="text-xs text-slate-500">Receba o dinheiro só depois de o caixa digitar o código.</p>
+            </div>
+          )}
+        </div>
+      )}
       {t.fechado_em && !t.conferido_em && !t.proprio && (
         <div className="space-y-2 border-t pt-2">
           <input aria-label="Observação da conferência" maxLength={200} value={obs} onChange={(e) => setObs(e.target.value)} placeholder="Observação (opcional)" className="w-full rounded-lg border-2 border-marca-200 px-3 py-2 outline-none focus:border-marca-600" />
@@ -81,12 +106,12 @@ export default function Conferencia() {
   useEffect(() => {
     let vivo = true;
     void (async () => {
-      const r = await supabase.from("eventos").select("id, nome").order("data_inicio", { ascending: false });
+      const r = await supabase.from("eventos").select("id, nome, data_inicio, data_fim, status").order("data_inicio", { ascending: false });
       if (!vivo) return;
       if (r.error) return setErro("Não foi possível carregar os eventos.");
-      const lista = (r.data ?? []) as Ev[];
+      const lista = (r.data ?? []) as EventoSel[];
       setEventos(lista);
-      setEventoId(lista[0]?.id ?? "");
+      setEventoId(escolherEventoPadrao(lista));
       if (lista.length === 0) setTurnos([]);
     })();
     return () => { vivo = false; };
@@ -98,6 +123,8 @@ export default function Conferencia() {
     catch (e) { setErro(e instanceof Error ? e.message : "Erro ao carregar."); setTurnos((t) => t ?? []); }
   }, [eventoId]);
   useEffect(() => { void carregar(); }, [carregar]);
+
+  useEffect(() => { if (eventoId) lembrarEvento(eventoId); }, [eventoId]);
 
   if (!usuario) return null;
   if (usuario.papel !== "conselho" && usuario.papel !== "admin") return <Navigate to="/" replace />;
@@ -112,7 +139,7 @@ export default function Conferencia() {
       <label className="block text-sm font-semibold">Evento
         <select aria-label="Evento" value={eventoId} onChange={(e) => { setTurnos(undefined); setEventoId(e.target.value); }}
           className="w-full rounded-lg border-2 border-marca-200 bg-white px-3 py-3 text-lg outline-none focus:border-marca-600">
-          {eventos.map((e) => <option key={e.id} value={e.id}>{e.nome}</option>)}
+          {eventos.map((e) => <option key={e.id} value={e.id}>{rotuloEvento(e)}</option>)}
         </select>
       </label>
       {erro && <p role="alert" className="rounded-lg bg-red-50 p-3 font-medium text-red-700">{erro}</p>}

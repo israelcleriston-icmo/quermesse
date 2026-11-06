@@ -22,6 +22,7 @@ const MENSAGENS: Record<string, string> = {
   JA_CONFIRMADA: "Esta sangria já foi confirmada.",
   JA_CONFERIDO: "Este turno já foi conferido.",
   TURNO_ABERTO: "O caixa ainda não fechou este turno.",
+  CODIGO_BLOQUEADO: "Código bloqueado por excesso de tentativas. Peça um novo código ao Conselho.",
 };
 function falha(error: { message?: string }, padrao: string): never {
   const cod = Object.keys(MENSAGENS).find((c) => (error.message ?? "").includes(c));
@@ -52,6 +53,26 @@ export async function abrirTurno(eventoId: string, fundoCentavos: number): Promi
 export async function registrarSangria(turnoId: string, centavos: number, motivo: string): Promise<void> {
   const { error } = await supabase.rpc("registrar_sangria", { p_turno: turnoId, p_valor: reais(centavos), p_motivo: motivo.trim() || null });
   if (error) falha(error, SEM_REDE);
+}
+/** Sangria confirmada na hora pelo código do Conselho. Código errado/expirado lança erro com mensagem clara. */
+export async function registrarSangriaComCodigo(turnoId: string, centavos: number, motivo: string, codigo: string): Promise<void> {
+  const { data, error } = await supabase.rpc("registrar_sangria_codigo", {
+    p_turno: turnoId, p_valor: reais(centavos), p_codigo: codigo.trim(), p_motivo: motivo.trim() || null,
+  });
+  if (error) falha(error, SEM_REDE);
+  const r = (data ?? {}) as { ok?: boolean; restantes?: number | null };
+  if (r.ok) return;
+  if (typeof r.restantes === "number") {
+    throw new Error(`Código incorreto. ${r.restantes === 1 ? "Resta 1 tentativa" : `Restam ${r.restantes} tentativas`}.`);
+  }
+  throw new Error("Código inválido ou expirado para este valor. Peça um novo código ao Conselho (o valor deve ser o mesmo).");
+}
+export interface CodigoSangria { codigo: string; expira_em: string; valor: number }
+/** Conselho/admin: gera o código de 6 dígitos (vale 10 min) para o caixa digitar. */
+export async function gerarCodigoSangria(turnoId: string, centavos: number): Promise<CodigoSangria> {
+  const { data, error } = await supabase.rpc("gerar_codigo_sangria", { p_turno: turnoId, p_valor: reais(centavos) });
+  if (error) falha(error, SEM_REDE);
+  return data as CodigoSangria;
 }
 export async function fecharTurno(turnoId: string, contadoCentavos: number, obs: string): Promise<void> {
   const { error } = await supabase.rpc("fechar_turno", { p_turno: turnoId, p_contado: reais(contadoCentavos), p_obs: obs.trim() || null });
