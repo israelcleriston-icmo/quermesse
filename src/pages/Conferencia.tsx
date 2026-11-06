@@ -1,5 +1,5 @@
 // Conferência dos caixas (Conselho/admin): esperado x contado, sangrias e conferência do turno.
-import { useCallback, useEffect, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import { Link, Navigate } from "react-router-dom";
 import { brl } from "../lib/dinheiro";
 import { lerReais } from "../lib/pagamento";
@@ -24,10 +24,22 @@ function CartaoTurno({ t, aoMudar, aoErro }: { t: TurnoConferencia; aoMudar: () 
   }
   const [valorCod, setValorCod] = useState("");
   const [cod, setCod] = useState<CodigoSangria | null>(null);
+  const [recebida, setRecebida] = useState<number | null>(null);
+  const baseConfirmadas = useRef(0);
+  const confirmadas = t.sangrias.filter((x) => x.confirmada).length;
+  // Com um código na tela, olha o servidor a cada 4 s; se surgir uma sangria confirmada nova, avisa.
+  useEffect(() => {
+    if (!cod) return;
+    const id = setInterval(() => aoMudar(), 4000);
+    return () => clearInterval(id);
+  }, [cod, aoMudar]);
+  useEffect(() => {
+    if (cod && confirmadas > baseConfirmadas.current) { setRecebida(cod.valor); setCod(null); setValorCod(""); }
+  }, [confirmadas, cod]);
   const gerar = () => {
     const v = lerReais(valorCod);
     if (!v) return aoErro("Digite o valor que o caixa vai entregar. Exemplo: 100,00");
-    void agir(async () => { setCod(await gerarCodigoSangria(t.turno_id, v)); }, false);
+    void agir(async () => { baseConfirmadas.current = confirmadas; setRecebida(null); setCod(await gerarCodigoSangria(t.turno_id, v)); }, false);
   };
   const dif = t.diferenca;
   const corDif = dif === null ? "" : dif === 0 ? "text-green-700" : "text-red-700";
@@ -76,11 +88,14 @@ function CartaoTurno({ t, aoMudar, aoErro }: { t: TurnoConferencia; aoMudar: () 
             <input aria-label="Valor da sangria a receber" inputMode="decimal" placeholder="Valor (R$)" value={valorCod} onChange={(e) => { setValorCod(e.target.value); setCod(null); }} className="min-w-0 flex-1 rounded-lg border-2 border-marca-200 px-3 py-2 outline-none focus:border-marca-600" />
             <button disabled={ocupado} onClick={gerar} className="rounded-lg bg-marca-600 px-3 py-2 font-bold text-white disabled:opacity-40">Gerar código</button>
           </div>
+          {recebida !== null && (
+            <p role="status" className="rounded-lg bg-green-100 p-3 text-center font-bold text-green-800">Sangria de {c(recebida)} confirmada pelo caixa. Pode receber o dinheiro.</p>
+          )}
           {cod && (
             <div role="status" className="rounded-lg bg-white p-3 text-center">
               <p className="text-sm text-slate-600">Passe este código ao caixa (vale 10 minutos, {c(cod.valor)}):</p>
               <p aria-label="Código gerado" className="text-4xl font-extrabold tracking-[0.3em] text-marca-900">{cod.codigo}</p>
-              <p className="text-xs text-slate-500">Receba o dinheiro só depois de o caixa digitar o código.</p>
+              <p className="text-xs text-slate-500">Receba o dinheiro só depois de o caixa digitar o código. Esta tela avisa quando ele confirmar.</p>
             </div>
           )}
         </div>
