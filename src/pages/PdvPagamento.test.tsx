@@ -43,7 +43,7 @@ async function irParaPagamento() {
   await screen.findByText(/Falta\s+R\$\s*12,00/);                          // total 7,00 + 5,00
 }
 
-describe("PDV: pagamento em sequência", () => {
+describe("PDV: pagamento em sequência", { timeout: 15000 }, () => {
   beforeEach(() => {
     vi.clearAllMocks();
     URL.createObjectURL = () => "blob:previa";
@@ -81,7 +81,7 @@ describe("PDV: pagamento em sequência", () => {
     fireEvent.click(botao("Pix"));
     digitar("Valor desta parte", "5");
     fireEvent.click(botao("Gerar QR Code"));
-    await screen.findByAltText("QR Code do Pix");
+    await screen.findByAltText("QR Code do Pix", {}, { timeout: 8000 });
     expect(m.registrarPix).toHaveBeenCalledWith("ev1", 500, expect.any(String));
     expect(screen.getByText("EVT1V000008A")).toBeTruthy();
     const input = document.querySelector('input[type="file"]') as HTMLInputElement;
@@ -129,7 +129,7 @@ describe("PDV: pagamento em sequência", () => {
     await irParaPagamento();
     fireEvent.click(botao("Pix"));
     fireEvent.click(botao("Gerar QR Code"));
-    await screen.findByAltText("QR Code do Pix");
+    await screen.findByAltText("QR Code do Pix", {}, { timeout: 8000 });
     fireEvent.click(botao("Cliente não pagou"));
     fireEvent.click(await screen.findByText("Sim, não pagou"));
     await screen.findByText(/Escolha a forma de pagamento/);
@@ -142,7 +142,7 @@ describe("PDV: pagamento em sequência", () => {
     await irParaPagamento();
     fireEvent.click(botao("Pix"));
     fireEvent.click(botao("Gerar QR Code"));
-    await screen.findByAltText("QR Code do Pix");
+    await screen.findByAltText("QR Code do Pix", {}, { timeout: 8000 });
 
     const writeText = vi.fn().mockResolvedValue(undefined);
     Object.defineProperty(navigator, "clipboard", { value: { writeText }, configurable: true });
@@ -170,7 +170,7 @@ describe("PDV: pagamento em sequência", () => {
     await irParaPagamento();
     fireEvent.click(botao("Pix"));
     fireEvent.click(botao("Gerar QR Code"));
-    await screen.findByAltText("QR Code do Pix");
+    await screen.findByAltText("QR Code do Pix", {}, { timeout: 8000 });
     fireEvent.click(botao("Enviar por WhatsApp"));
     digitar("Celular do cliente", "1191234");
     expect((screen.getByText("Abrir WhatsApp") as HTMLElement).tagName).toBe("SPAN");

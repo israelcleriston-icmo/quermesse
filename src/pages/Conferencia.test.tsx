@@ -66,4 +66,26 @@ describe("conferência dos caixas (Conselho)", () => {
     await waitFor(() => expect(m.rpc).toHaveBeenCalledWith("gerar_codigo_sangria", { p_turno: "t1", p_valor: 100 }));
     expect((await screen.findByLabelText("Código gerado")).textContent).toBe("482915");
   });
+  it("depois de gerar o código, avisa sozinha quando o caixa confirma a sangria", async () => {
+    let gerado = false, confirmada = false;
+    m.rpc.mockImplementation(async (nome: string) => {
+      if (nome === "gerar_codigo_sangria") { gerado = true; return { data: { codigo: "482915", expira_em: "x", valor: 100 }, error: null }; }
+      if (nome !== "conferencia_turnos") return { error: null };
+      const base = turno({ fechado_em: null, esperado: null, diferenca: null, contado: null, sangrias: [] });
+      if (gerado && confirmada) base.sangrias = [{ id: "s9", valor: 100, motivo: "x", registrada_em: "2026-11-05T15:00:00Z", confirmada: true }];
+      return { data: [base], error: null };
+    });
+    vi.useFakeTimers({ shouldAdvanceTime: true });
+    try {
+      montar();
+      await screen.findByText("Maria Caixa");
+      fireEvent.change(screen.getByLabelText("Valor da sangria a receber"), { target: { value: "100" } });
+      fireEvent.click(screen.getByText("Gerar código"));
+      await screen.findByLabelText("Código gerado");
+      confirmada = true;
+      await vi.advanceTimersByTimeAsync(4500);
+      expect((await screen.findByText(/confirmada pelo caixa/)).textContent).toMatch(/R\$\s*100,00/);
+      expect(screen.queryByLabelText("Código gerado")).toBeNull();
+    } finally { vi.useRealTimers(); }
+  });
 });
