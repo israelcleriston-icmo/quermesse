@@ -516,5 +516,40 @@ update vendas set vendedor_id = '00000000-0000-0000-0000-0000000000a4'
 select t.check('T23e pessoa com perfil Conselho não confere Pix de venda feita por ela',
   t.run(:'a4'::uuid, format($q$select conferir_pagamento_pix('%s')::text$q$, (select id from vendas_pagamentos where forma='pix' order by id limit 1))) like 'ERR:PROPRIA_VENDA%');
 
+-- ---------- T24: sangria confirmada por código do Conselho -------------------------
+\set a5 '00000000-0000-0000-0000-0000000000a5'
+insert into auth.users(id,email) values (:'a5','cx5');
+insert into perfis(id,nome,cpf) values (:'a5','Caixa 5','88888888888');
+insert into membros(usuario_id,organizacao_id,papel) values (:'a5','10000000-0000-0000-0000-000000000001','caixa');
+select t.check('T24a caixa 5 abre turno (fundo 20,00)', t.run(:'a5'::uuid, format($q$select abrir_turno('%s', 20)::text$q$, :'ev6')) like 'OK:%');
+select t.check('T24b caixa não gera código; valor inválido é recusado; Conselho gera',
+  t.run(:'a5'::uuid, format($q$select gerar_codigo_sangria('%s', 50)::text$q$, (select id from turnos_caixa where caixa_id=:'a5'))) like 'ERR:SEM_PERMISSAO%'
+  and t.run(:'con'::uuid, format($q$select gerar_codigo_sangria('%s', 0)::text$q$, (select id from turnos_caixa where caixa_id=:'a5'))) like 'ERR:VALOR_INVALIDO%'
+  and t.run(:'con'::uuid, format($q$select gerar_codigo_sangria('%s', 50)->>'codigo'$q$, (select id from turnos_caixa where caixa_id=:'a5'))) ~ '^OK:[0-9]{6}$');
+-- guarda o último código gerado (só para o teste, em tabela temporária de testes)
+create table t.cod(c text);
+insert into t.cod select substring(t.run(:'con'::uuid, format($q$select gerar_codigo_sangria('%s', 50)->>'codigo'$q$, (select id from turnos_caixa where caixa_id=:'a5'))) from 4);
+select t.check('T24c o código não fica em claro no banco',
+  not exists (select 1 from sangria_codigos where codigo_hash = (select c from t.cod)) and (select count(*) from sangria_codigos) >= 2);
+select t.check('T24d código errado devolve ok=false com tentativas restantes; valor diferente não casa',
+  t.run(:'a5'::uuid, format($q$select registrar_sangria_codigo('%s', 50, '000000')::text$q$, (select id from turnos_caixa where caixa_id=:'a5'))) like 'OK:%"restantes": 4%'
+  and t.run(:'a5'::uuid, format($q$select registrar_sangria_codigo('%s', 70, '%s')->>'erro'$q$, (select id from turnos_caixa where caixa_id=:'a5'), (select c from t.cod))) = 'OK:CODIGO_INVALIDO');
+select t.after('T24e código certo registra a sangria já confirmada pelo Conselho que gerou',
+  t.run(:'a5'::uuid, format($q$select registrar_sangria_codigo('%s', 50, '%s', 'entregue ao Zé')->>'ok'$q$, (select id from turnos_caixa where caixa_id=:'a5'), (select c from t.cod))),
+  'OK:true', $x$select (select count(*) from sangrias s join turnos_caixa t on t.id=s.turno_id where t.caixa_id='00000000-0000-0000-0000-0000000000a5' and s.confirmada_em is not null and s.confirmada_por='00000000-0000-0000-0000-0000000000c1') = 1$x$);
+select t.check('T24f o mesmo código não vale duas vezes',
+  t.run(:'a5'::uuid, format($q$select registrar_sangria_codigo('%s', 50, '%s')->>'erro'$q$, (select id from turnos_caixa where caixa_id=:'a5'), (select c from t.cod))) = 'OK:CODIGO_INVALIDO');
+select t.check('T24g cinco erros bloqueiam o código, mesmo digitando o certo depois',
+  t.run(:'con'::uuid, format($q$select gerar_codigo_sangria('%s', 30)->>'codigo'$q$, (select id from turnos_caixa where caixa_id=:'a5'))) like 'OK:%');
+create temp table tmp_cod as select substring(t.run(:'con'::uuid, format($q$select gerar_codigo_sangria('%s', 30)->>'codigo'$q$, (select id from turnos_caixa where caixa_id=:'a5'))) from 4) as c;
+select t.check('T24h ... 5 tentativas erradas e a sexta (certa) é bloqueada',
+  (select bool_and(t.run(:'a5'::uuid, format($q$select registrar_sangria_codigo('%s', 30, '99999%s')->>'ok'$q$, (select id from turnos_caixa where caixa_id=:'a5'), g)) = 'OK:false') from generate_series(1,5) g)
+  and t.run(:'a5'::uuid, format($q$select registrar_sangria_codigo('%s', 30, '%s')->>'ok'$q$, (select id from turnos_caixa where caixa_id=:'a5'), (select c from tmp_cod))) like 'ERR:CODIGO_BLOQUEADO%');
+select t.check('T24i Conselho não gera código para o próprio turno',
+  t.run(:'a4'::uuid, format($q$select gerar_codigo_sangria('%s', 5)::text$q$, (select id from turnos_caixa where caixa_id=:'a4' limit 1))) like 'ERR:PROPRIO_TURNO%');
+select t.after('T24j sangria sem código continua possível (fica pendente)',
+  t.run(:'a5'::uuid, format($q$select registrar_sangria('%s', 5)::text$q$, (select id from turnos_caixa where caixa_id=:'a5'))),
+  'OK:%', $x$select (select count(*) from sangrias s join turnos_caixa t on t.id=s.turno_id where t.caixa_id='00000000-0000-0000-0000-0000000000a5' and s.confirmada_em is null) = 1$x$);
+
 select n, case when ok then 'PASS' else 'FAIL' end as resultado, nome from t.res where not ok order by n;
 select count(*) filter (where ok) as passou, count(*) filter (where not ok) as falhou from t.res;

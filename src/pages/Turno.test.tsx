@@ -86,4 +86,29 @@ describe("turno do caixa", () => {
     montar();
     expect(screen.queryByText("Meu turno de caixa")).toBeNull();
   });
+  it("sangria com código do Conselho: chama registrar_sangria_codigo; código errado mostra tentativas", async () => {
+    m.turno = { id: "t1", evento_id: "ev1", aberto_em: new Date().toISOString(), fundo_inicial: 50 };
+    m.rpc.mockResolvedValueOnce({ data: { ok: false, erro: "CODIGO_INVALIDO", restantes: 3 }, error: null });
+    montar();
+    await screen.findByText(/Fundo de troco/);
+    fireEvent.click(screen.getByText("+ Registrar sangria"));
+    fireEvent.change(screen.getByLabelText("Valor da sangria"), { target: { value: "50" } });
+    fireEvent.change(screen.getByLabelText("Código do Conselho"), { target: { value: "123456" } });
+    fireEvent.click(screen.getByText("Registrar"));
+    await waitFor(() => expect(m.rpc).toHaveBeenCalledWith("registrar_sangria_codigo", { p_turno: "t1", p_valor: 50, p_codigo: "123456", p_motivo: null }));
+    expect((await screen.findByRole("alert")).textContent).toMatch(/Restam 3 tentativas/);
+    expect(m.rpc).not.toHaveBeenCalledWith("registrar_sangria", expect.anything());
+  });
+
+  it("código com menos de 6 dígitos é recusado sem chamar o servidor", async () => {
+    m.turno = { id: "t1", evento_id: "ev1", aberto_em: new Date().toISOString(), fundo_inicial: 50 };
+    montar();
+    await screen.findByText(/Fundo de troco/);
+    fireEvent.click(screen.getByText("+ Registrar sangria"));
+    fireEvent.change(screen.getByLabelText("Valor da sangria"), { target: { value: "50" } });
+    fireEvent.change(screen.getByLabelText("Código do Conselho"), { target: { value: "123" } });
+    fireEvent.click(screen.getByText("Registrar"));
+    expect((await screen.findByRole("alert")).textContent).toMatch(/6 dígitos/);
+    expect(m.rpc).not.toHaveBeenCalled();
+  });
 });

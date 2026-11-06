@@ -3,10 +3,11 @@ import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { Link, Navigate } from "react-router-dom";
 import { brl } from "../lib/dinheiro";
 import { carregarPix, conciliar, lerArquivoOfx, marcarConferido, urlsComprovantes, type Conciliacao, type ExtratoOfx, type PixPagamento } from "../lib/pixconf";
+import { escolherEventoPadrao, lembrarEvento, rotuloEvento, type EventoSel } from "../lib/eventoPadrao";
 import { supabase } from "../lib/supabase";
 import { useAuth } from "../store/auth";
 
-interface Ev { id: string; nome: string }
+type Ev = EventoSel;
 const c = (v: number) => brl(Math.round(v * 100));
 const hora = (iso: string) => new Date(iso).toLocaleString("pt-BR", { day: "2-digit", month: "2-digit", hour: "2-digit", minute: "2-digit", timeZone: "America/Sao_Paulo" });
 const dataBR = (iso: string) => iso.split("-").reverse().join("/");
@@ -29,12 +30,12 @@ export default function ConferenciaPix() {
   useEffect(() => {
     let vivo = true;
     void (async () => {
-      const r = await supabase.from("eventos").select("id, nome").order("data_inicio", { ascending: false });
+      const r = await supabase.from("eventos").select("id, nome, data_inicio, data_fim, status").order("data_inicio", { ascending: false });
       if (!vivo) return;
       if (r.error) return setErro("Não foi possível carregar os eventos.");
-      const lista = (r.data ?? []) as Ev[];
+      const lista = (r.data ?? []) as EventoSel[];
       setEventos(lista);
-      setEventoId(lista[0]?.id ?? "");
+      setEventoId(escolherEventoPadrao(lista));
       if (lista.length === 0) setPix([]);
     })();
     return () => { vivo = false; };
@@ -52,6 +53,8 @@ export default function ConferenciaPix() {
   useEffect(() => { setPix(undefined); void carregar(); }, [carregar]);
 
   const conciliacao: Conciliacao | null = useMemo(() => (extrato && pix ? conciliar(extrato, pix) : null), [extrato, pix]);
+
+  useEffect(() => { if (eventoId) lembrarEvento(eventoId); }, [eventoId]);
 
   if (!usuario) return null;
   if (usuario.papel !== "conselho" && usuario.papel !== "admin") return <Navigate to="/" replace />;
@@ -81,7 +84,7 @@ export default function ConferenciaPix() {
         <h1 className="text-xl font-extrabold text-marca-900">Conferir Pix</h1>
       </header>
       <select aria-label="Evento" value={eventoId} onChange={(e) => { setExtrato(null); setEventoId(e.target.value); }} className={campo}>
-        {eventos.map((e) => <option key={e.id} value={e.id}>{e.nome}</option>)}
+        {eventos.map((e) => <option key={e.id} value={e.id}>{rotuloEvento(e)}</option>)}
       </select>
       <div className="grid grid-cols-2 gap-2">
         {(["fotos", "extrato"] as const).map((a) => (

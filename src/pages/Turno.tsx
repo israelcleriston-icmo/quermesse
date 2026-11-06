@@ -3,7 +3,7 @@ import { useCallback, useEffect, useState } from "react";
 import { Link, Navigate } from "react-router-dom";
 import { lerReais } from "../lib/pagamento";
 import { brl } from "../lib/dinheiro";
-import { abrirTurno, carregarTurnoAberto, fecharTurno, registrarSangria, type TurnoAberto } from "../lib/turno";
+import { abrirTurno, carregarTurnoAberto, fecharTurno, registrarSangria, registrarSangriaComCodigo, type TurnoAberto } from "../lib/turno";
 import { carregarEventosAtivos, type EventoAtivo } from "../lib/vendas";
 import { useAuth } from "../store/auth";
 
@@ -17,6 +17,7 @@ export default function Turno() {
   const [eventoId, setEventoId] = useState("");
   const [fundoTxt, setFundoTxt] = useState("");
   const [sangriaAberta, setSangriaAberta] = useState(false);
+  const [codigo, setCodigo] = useState("");
   const [sangTxt, setSangTxt] = useState("");
   const [motivo, setMotivo] = useState("");
   const [fechando, setFechando] = useState(false);
@@ -63,7 +64,12 @@ export default function Turno() {
   const sangrar = () => {
     const v = lerReais(sangTxt);
     if (!v) return setErro("Digite o valor retirado da gaveta. Exemplo: 100,00");
-    void agir(() => registrarSangria(turno!.id, v, motivo), () => { setSangriaAberta(false); setSangTxt(""); setMotivo(""); });
+    const cod = codigo.replace(/\D/g, "");
+    if (codigo.trim() !== "" && cod.length !== 6) return setErro("O código do Conselho tem 6 dígitos.");
+    void agir(
+      () => (cod ? registrarSangriaComCodigo(turno!.id, v, motivo, cod) : registrarSangria(turno!.id, v, motivo)),
+      () => { setSangriaAberta(false); setSangTxt(""); setMotivo(""); setCodigo(""); },
+    );
   };
   const fechar = () => {
     const c = lerReais(contadoTxt);
@@ -141,6 +147,10 @@ export default function Turno() {
             <label className="block text-sm font-semibold">Observação (opcional)
               <input aria-label="Observação da sangria" maxLength={100} value={motivo} onChange={(e) => setMotivo(e.target.value)} className={campo} placeholder="Ex.: entregue ao Sr. João" />
             </label>
+            <label className="block text-sm font-semibold">Código do Conselho
+              <input aria-label="Código do Conselho" inputMode="numeric" autoComplete="one-time-code" maxLength={6} placeholder="6 dígitos" value={codigo} onChange={(e) => setCodigo(e.target.value.replace(/\D/g, ""))} className={campo + " text-center text-2xl tracking-[0.4em]"} />
+            </label>
+            <p className="text-xs text-slate-600">Peça ao Conselho para gerar o código com este mesmo valor. Com o código, a sangria é confirmada na hora. Sem código, ela fica aguardando confirmação.</p>
             {erro && <p role="alert" className="rounded-lg bg-red-50 p-3 font-medium text-red-700">{erro}</p>}
             <div className="grid grid-cols-2 gap-3">
               <button onClick={() => setSangriaAberta(false)} className="rounded-xl bg-slate-200 py-4 text-lg font-bold">Cancelar</button>
