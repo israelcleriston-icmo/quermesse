@@ -8,6 +8,7 @@ import { brl } from "../lib/dinheiro";
 import { urlImagem } from "../lib/imagens";
 import { MAX_LINHAS, MAX_QTD, codificarPedido } from "../lib/pedido";
 import { supabase } from "../lib/supabase";
+import { AMBIENTE } from "../lib/ambiente";
 
 interface Item { seq: number; id: string; nome: string; categoria: string | null; valorCentavos: number; imagemUrl: string | null; esgotado: boolean }
 interface Cardapio { evento: { id: string; codigo: string; nome: string }; itens: Item[] }
@@ -88,7 +89,7 @@ export default function CardapioPublico() {
 
   return (
     <div className="mx-auto flex min-h-full max-w-md flex-col pb-28">
-      <header className="sticky top-6 z-30 bg-marca-600 p-3 text-white shadow">
+      <header className={`sticky ${AMBIENTE === "prod" ? "top-0" : "top-6"} z-30 bg-marca-600 p-3 text-white shadow`}>
         <div className="mb-2 flex items-center justify-center gap-2">
           <Logo tamanho={32} />
           <p className="truncate text-sm font-bold">{cardapio?.evento.nome ?? "Cardápio"}</p>
