@@ -551,5 +551,13 @@ select t.after('T24j sangria sem código continua possível (fica pendente)',
   t.run(:'a5'::uuid, format($q$select registrar_sangria('%s', 5)::text$q$, (select id from turnos_caixa where caixa_id=:'a5'))),
   'OK:%', $x$select (select count(*) from sangrias s join turnos_caixa t on t.id=s.turno_id where t.caixa_id='00000000-0000-0000-0000-0000000000a5' and s.confirmada_em is null) = 1$x$);
 
+-- ---------- T25: ping de keep-alive com escrita -------------------------------------
+select t.check('T25a ping_keepalive grava ultimo_ping e conta, sem criar linhas',
+  t.run(null, $q$select ping_keepalive()->>'ok'$q$) = 'OK:true'
+  and t.run(null, $q$select ping_keepalive()->>'ok'$q$) = 'OK:true');
+select t.after('T25b dois pings = total 2 numa única linha',
+  t.run(null, $q$select ping_keepalive()->>'ok'$q$), 'OK:true',
+  $x$select (select count(*) from health_check) = 1 and (select total_pings from health_check) = 3 and (select ultimo_ping from health_check) is not null$x$);
+
 select n, case when ok then 'PASS' else 'FAIL' end as resultado, nome from t.res where not ok order by n;
 select count(*) filter (where ok) as passou, count(*) filter (where not ok) as falhou from t.res;
