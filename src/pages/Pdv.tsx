@@ -130,7 +130,7 @@ export default function Pdv() {
 
   return (
     <div className="mx-auto flex min-h-full max-w-md flex-col pb-40">
-      <header className="sticky top-6 z-30 bg-marca-600 p-3 text-white shadow">
+      <header className={`sticky ${AMBIENTE === "prod" ? "top-0" : "top-6"} z-30 bg-marca-600 p-3 text-white shadow`}>
         <div className="mb-2 flex items-center justify-between">
           <Link to="/" className="font-semibold">← Início</Link>
           {eventos && eventos.length > 1 ? (
